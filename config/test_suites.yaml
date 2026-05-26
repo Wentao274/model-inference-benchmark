@@ -1,0 +1,16 @@
+test-config:
+  suites:
+    test_01:
+      dataset-name: random
+      max-concurrency: [ 1, 64 ]
+      num-prompts: [ 128 ]
+      random-input-output-len: [ [ 50000, 200 ]]
+    test_02:
+      dataset-name: random
+      max-concurrency: [ 1, 10 ]
+      num-prompts: [ 100 ]
+      random-input-output-len: [[ 194560, 1024 ]]
+  temperature: 0.7
+  seed: 123
+  random-range-ratio: 0.3
+  ready-check-timeout-sec: 30
