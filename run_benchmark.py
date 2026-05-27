@@ -36,7 +36,7 @@ def run_benchmark(
     ready_timeout = test_config.get("ready-check-timeout-sec", 30)
     random_range_ratio = test_config.get("random-range-ratio", 0.3)
 
-    output_base = f"reports/benchmark/{chip_name}/{served_model_name}"
+    output_base = f"reports/{infra}/benchmark/{chip_name}/{served_model_name}"
 
     params_config = test_config.get("suites", {})
 
@@ -157,7 +157,7 @@ def run_benchmark(
             log_f.close()
 
             print(f"Completed: {log_file}")
-            time.sleep(30)
+            time.sleep(60)
 
 
 def main():
