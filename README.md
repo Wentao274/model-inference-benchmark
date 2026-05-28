@@ -81,22 +81,25 @@ python run_benchmark.py \
 | `--model` | 是 | 模型名称 |
 | `--test-suite` | 否 | 测试套件，默认：`test_01` |
 | `--run-id` | 否 | 指定运行 ID，不指定则自动使用最新的 |
-| `--compare-with` | 否 | 指定对比的运行 ID，支持逗号分隔多个（如：`run1,run2`），需与 `--run-id` 配合使用 |
+| `--compare-with` | 否 | 指定对比的运行 ID，支持逗号分隔多个（如：`run1,run2`），需与 `--run-id` 配合使用。以 `--compare-with` 的第一个值为基准进行对比 |
 
 ### 功能特性
 
 - **单次报告**：当只有 1 个 run-id 时，生成单次测试性能报告
-- **对比报告**：当有多个 run-id 时，自动与上一个 run-id 进行对比
-  - 自动选择策略：当前 run-id 与最近的上一 run-id 对比
-  - 手动指定：使用 `--run-id` 和 `--compare-with` 参数指定基准和对比目标
-- **多 Run-ID 对比**：支持3个及以上 run-id 同时对比，所有对比均以 `--run-id` 为基准
+- **对比报告**：使用 `--run-id` 和 `--compare-with` 参数指定对比
+  - **基准选择逻辑**：
+    - `--run-id 01 --compare-with 03`：以 `RUN-03` 为基准，`RUN-01` 为对比目标
+    - `--run-id 01 --compare-with 03,04`：以 `RUN-03` 为基准，`RUN-01` 和 `RUN-04` 为对比目标
+    - 输出目录命名：`compare_{基准}_{对比目标}`，如 `compare_03_01` 或 `compare_03_01_04`
+  - 表格显示：`RUN-{基准} | RUN-{对比1} (vs {基准}) | RUN-{对比2} (vs {基准}) | ...`
+- **自动对比**（无 `--run-id` 时）：自动选择最近的两个 run-id 进行对比，以较旧的为基准
 - **图表差异标注**：
   - 2个 run-id 对比：折线图显示箭头和差异百分比
   - 3个及以上 run-id 对比：每条对比线都显示箭头和差异百分比
   - 箭头颜色与对应 run-id 的图例颜色一致
-  - 百分比标注以 `--run-id` 为基准计算
+  - 百分比标注以基准 run-id 计算
   - 数值和百分比位置优化，避免重叠
-- **报告包含 Benchmark 命令**：报告底部自动生成可执行的 benchmark 命令
+- **报告包含 Benchmark 命令**：报告底部自动生成可执行的 benchmark 命令，参数占位符为 `${MODEL_PATH}` 和 `${BASE_URL}`
 
 ### 使用示例
 
@@ -120,7 +123,7 @@ python generate_report.py \
   --test-suite test_01
 ```
 
-**手动指定 run-id 和对比基准（2个 run-id 对比）：**
+**手动指定 run-id 和对比基准（2个 run-id 对比，以 compare-with 为基准）：**
 
 ```bash
 python generate_report.py \
@@ -128,11 +131,12 @@ python generate_report.py \
   --chip nvidia_h100 \
   --model Llama-2-7b \
   --test-suite test_01 \
-  --run-id 1P1D \
-  --compare-with 1P1D+HC
+  --run-id 01 \
+  --compare-with 03
 ```
+结果：以 `RUN-03` 为基准，`RUN-01` 为对比，输出目录 `compare_03_01`
 
-**多 run-id 对比（3个及以上）：**
+**多 run-id 对比（3个及以上，以 compare-with 第一个值为基准）：**
 
 ```bash
 python generate_report.py \
@@ -140,9 +144,10 @@ python generate_report.py \
   --chip kunlun_p800 \
   --model minimax-m2.5 \
   --test-suite test_01 \
-  --run-id 1P1D \
-  --compare-with 1P1D+HC,1P2D
+  --run-id 01 \
+  --compare-with 03,04
 ```
+结果：以 `RUN-03` 为基准，`RUN-01` 和 `RUN-04` 为对比目标，输出目录 `compare_03_01_04`
 
 ### 输出说明
 
@@ -194,16 +199,16 @@ analysis/
 - `performance_trends.png`: 性能趋势图表
 - `{model}_{chip}_report.md`: Markdown 格式单次报告
 
-**对比报告输出（`compare_{run_id}_{compare_with}/` 目录）：**
+**对比报告输出（`compare_{基准}_{对比目标}/` 目录）：**
 
 - `runid_comparison.csv`: Run-ID 对比数据 CSV
 - `runid_comparison.png`: Run-ID 对比图表（含差异百分比标注）
-- `{model}_{chip}_runid_compare_{run_id}_{compare_with}.md`: Markdown 格式对比报告
+- `{model}_{chip}_runid_compare.md`: Markdown 格式对比报告
 
 **对比报告图表特性：**
 
 - 数据点标注实际数值：
-  - 2 个 run-id：基准 run-id 数值在上方，对比 run-id 数值在下方
+  - 基准 run-id 数值在上方，对比 run-id 数值在下方
   - 3 个及以上：第一个在上方，第二个在下方，后续交替放置
 - 差异百分比标注：
   - 箭头从基准 run-id 指向对比 run-id，颜色与对应 run-id 一致
@@ -220,4 +225,4 @@ analysis/
 
 - 单次报告和对比报告底部都以代码块形式显示对应的 benchmark 执行命令
 - 根据 `--infra` 参数自动生成 vLLM 或 SGLang 的命令
-- 使用 test-suite 第一个配置的参数值
+- 参数占位符使用 `${MODEL_PATH}` 和 `${BASE_URL}`，便于用户替换为实际值

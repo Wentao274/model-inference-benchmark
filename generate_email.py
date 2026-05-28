@@ -130,7 +130,12 @@ def main():
     compare_with = args.compare_with
 
     if compare_with:
-        compare_str = compare_with.replace(",", "_").strip("_")
+        compare_ids = [c.strip() for c in compare_with.split(",")]
+        baseline_id = compare_ids[0]
+        comparison_ids = (
+            [run_id] + compare_ids[1:] if len(compare_ids) > 1 else [run_id]
+        )
+        compare_str = "_".join(comparison_ids)
         analysis_dir = os.path.join(
             builds_dir,
             "analysis",
@@ -138,7 +143,7 @@ def main():
             args.chip,
             args.model,
             args.test_suite,
-            f"compare_{run_id}_{compare_str}",
+            f"compare_{baseline_id}_{compare_str}",
         )
     else:
         analysis_dir = os.path.join(

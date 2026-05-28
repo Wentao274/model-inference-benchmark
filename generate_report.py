@@ -1447,13 +1447,16 @@ def main():
     output_dirs = []
     if args.run_id:
         if args.compare_with:
-            all_run_ids = [args.run_id] + [
-                c.strip() for c in args.compare_with.split(",")
-            ]
-            all_run_ids = [r for r in all_run_ids if r != args.run_id]
-            all_run_ids = [args.run_id] + all_run_ids
-            compare_str = "_".join([r for r in all_run_ids if r != args.run_id])
-            output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/compare_{args.run_id}_{compare_str}"
+            compare_ids = [c.strip() for c in args.compare_with.split(",")]
+            baseline_id = compare_ids[0]
+            comparison_ids = (
+                [args.run_id] + compare_ids[1:]
+                if len(compare_ids) > 1
+                else [args.run_id]
+            )
+            all_run_ids = [baseline_id] + comparison_ids
+            compare_str = "_".join(comparison_ids)
+            output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/compare_{baseline_id}_{compare_str}"
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             generate_comparison_report(
                 infra,

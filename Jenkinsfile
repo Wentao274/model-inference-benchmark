@@ -175,7 +175,7 @@ ENDSSH
                             def analysisSrcPath = ""
                             if (compareWith) {
                                 def compareStr = compareWith.split(',').collect { it.trim() }.join('_')
-                                analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/compare_${runId}_${compareStr}"
+                                analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/compare_${compareStr}_${runId}"
                             } else {
                                 analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${runId}"
                             }
