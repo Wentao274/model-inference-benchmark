@@ -227,9 +227,9 @@ def generate_benchmark_command(infra, model_name, test_suite):
             f"  --random-input-len {ni}",
             f"  --random-output-len {no}",
             f"  --random-range-ratio {random_range_ratio}",
-            "  --model <MODEL_PATH>",
+            "  --model ${MODEL_PATH}",
             "  --trust-remote-code",
-            "  --base-url <BASE_URL>",
+            "  --base-url ${BASE_URL}",
             f"  --num-prompts {np}",
             f"  --max-concurrency {nc}",
             f"  --temperature {temperature}",
@@ -242,7 +242,7 @@ def generate_benchmark_command(infra, model_name, test_suite):
         cmd_parts = [
             "python3 -m sglang.bench_serving",
             "  --backend sglang-oai-chat",
-            "  --base-url <BASE_URL>",
+            "  --base-url ${BASE_URL}",
             f"  --dataset-name {dataset_name}",
             f"  --random-range-ratio {random_range_ratio}",
             f"  --served-model-name {model_name}",
@@ -251,7 +251,7 @@ def generate_benchmark_command(infra, model_name, test_suite):
             f"  --max-concurrency {nc}",
             f"  --num-prompt {np}",
             f"  --seed {seed}",
-            "  --model <MODEL_PATH>",
+            "  --model ${MODEL_PATH}",
         ]
 
     return "\n".join(cmd_parts)

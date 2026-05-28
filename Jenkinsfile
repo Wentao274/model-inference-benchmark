@@ -96,6 +96,7 @@ sleep 20
 echo "=== 容器状态 ==="
 docker ps | grep ${containerName}
 
+echo "=== 安装测试依赖 ==="
 export https_proxy=http://100.64.1.68:1080
 export http_proxy=http://100.64.1.68:1080
 docker exec ${containerName} bash -c "cd /workspace/model-inference-benchmark && pip install -q -r requirements.txt || pip3 install -q -r requirements.txt"
@@ -258,15 +259,16 @@ stage('发送邮件') {
                         def buildsDir = "builds/${BUILD_NUMBER}"
 
                         def containerName = env.CONTAINER_NAME
-                        def remoteTmpDir = "${params.WORK_DIR}/tmp"
-                        def remoteJson = "${remoteTmpDir}/email_data_${BUILD_NUMBER}.json"
-                        def remoteZip = "${remoteTmpDir}/benchmark_reports_${BUILD_NUMBER}.zip"
-                        def localJson = "/tmp/email_data_${BUILD_NUMBER}.json"
+                        def remoteTmpDir = "/workspace/model-inference-benchmark/tmp"
+                        def localTmpDir = "/tmp/email_data_${BUILD_NUMBER}"
+                        def localZip = "${buildsDir}/benchmark_reports_${BUILD_NUMBER}.zip"
 
                         sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                             sh """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+mkdir -p ${params.WORK_DIR}/tmp
 mkdir -p ${remoteTmpDir}
+docker exec ${containerName} bash -c "mkdir -p ${remoteTmpDir}"
 docker exec ${containerName} python3 /workspace/model-inference-benchmark/generate_email.py \
     --builds-dir /workspace/model-inference-benchmark/${buildsDir} \
     --infra ${params.INFRA} \
@@ -276,36 +278,29 @@ docker exec ${containerName} python3 /workspace/model-inference-benchmark/genera
     --run-id ${runId} \
     --compare-with '${compareWith}' \
     --build-number ${BUILD_NUMBER} \
-    --output-json ${remoteJson} \
-    --output-zip ${remoteZip}
+    --output-json ${remoteTmpDir}/report_count.txt \
+    --output-zip ${remoteTmpDir}/benchmark_reports_${BUILD_NUMBER}.zip
 ENDSSH
 """
                             sh """
+mkdir -p ${localTmpDir}
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${remoteJson} ${localJson}
+    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/report_count.txt ${localTmpDir}/
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${remoteZip} ${buildsDir}/benchmark_reports_${BUILD_NUMBER}.zip
+    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/report_html.txt ${localTmpDir}/
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/log_file_names.txt ${localTmpDir}/
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/test_status.txt ${localTmpDir}/
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/benchmark_reports_${BUILD_NUMBER}.zip ${localZip}
 """
                         }
 
-                        def emailDataText = readFile(localJson).trim()
-                        def slurper = new groovy.json.JsonSlurper()
-                        def emailData = slurper.parseText(emailDataText)
-
-                        def reportCount = emailData.report_count
-                        def reportBlocks = emailData.report_blocks
-                        def logFileNames = emailData.log_file_names
-                        def runTestStatus = emailData.test_status
-
-                        def reportContents = ""
-                        reportBlocks.each { b ->
-                            reportContents += """
-<div class="report-block">
-<h3 style="margin-top: 0; color: #2196F3; border-bottom: 1px solid #ddd; padding-bottom: 10px;">${b.title}</h3>
-<div class="report-content">${b.content}</div>
-</div>
-"""
-                        }
+                        def reportCount = readFile("${localTmpDir}/report_count.txt").trim().toInteger()
+                        def reportHtml = readFile("${localTmpDir}/report_html.txt").trim()
+                        def logFileNames = readFile("${localTmpDir}/log_file_names.txt").trim()
+                        def runTestStatus = readFile("${localTmpDir}/test_status.txt").trim()
 
                         def emailBody = """
 <html>
@@ -334,36 +329,29 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     <table>
         <tr><th>项目</th><td>值</td></tr>
         <tr><td>构建编号</td><td>#${BUILD_NUMBER}</td></tr>
-        <tr><td>运行 ID</td><td>${runId}</td></tr>
         <tr><td>推理框架</td><td>${infra}</td></tr>
-        <tr><td>被测芯片</td><td>${params.CHIP}</td></tr>
-        <tr><td>被测模型</td><td>${params.MODEL}</td></tr>
-        <tr><td>远程服务</td><td>${params.BASE_URL}</td></tr>
-        <tr><td>执行时间</td><td>${currentBuild.durationString}</td></tr>
-        <tr><td>测试状态</td><td>${runTestStatus}</td></tr>
-    </table>
-
-    <h3>测试配置</h3>
-    <table>
-        <tr><td><b>芯片平台</b></td><td>${params.CHIP}</td></tr>
-        <tr><td><b>模型名称</b></td><td>${params.MODEL}</td></tr>
-        <tr><td><b>模型路径</b></td><td>${params.MODEL_PATH}</td></tr>
-        <tr><td><b>API 地址</b></td><td>${params.BASE_URL}</td></tr>
-        <tr><td><b>测试套件</b></td><td>${params.TEST_SUITE}</td></tr>
+        <tr><td>芯片平台</td><td>${params.CHIP}</td></tr>
+        <tr><td>模型名称</td><td>${params.MODEL}</td></tr>
+        <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
+        <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
+        <tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>
+        <tr><td>运行 ID</td><td>${runId}</td></tr>
 """
                         if (compareWith) {
                             emailBody += """
-        <tr><td><b>对比运行 ID</b></td><td>${compareWith}</td></tr>
+        <tr><td>对比运行 ID</td><td>${compareWith}</td></tr>
 """
                         }
                         emailBody += """
+        <tr><td>执行时间</td><td>${currentBuild.durationString}</td></tr>
+        <tr><td>测试状态</td><td>${runTestStatus}</td></tr>
     </table>
 
     <h3>测试日志</h3>
     ${logFileNames}
 
     <h3>测试报告内容</h3>
-    ${reportContents ?: '<p>无报告文件</p>'}
+    ${reportHtml ?: '<p>无报告文件</p>'}
 
     <p style="margin-top: 20px;"><b>详细日志和报告已归档到 Jenkins 构建 artifacts 中。</b></p>
     <p>Jenkins 构建地址: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
@@ -384,7 +372,7 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                             body: emailBody,
                             to: "${params.RECIPIENTS}",
                             mimeType: 'text/html',
-                            attachmentsPattern: "builds/${BUILD_NUMBER}/**"
+                            attachmentsPattern: "builds/${BUILD_NUMBER}/*.zip,builds/${BUILD_NUMBER}/**/*.log"
                         )
                     }
                 }

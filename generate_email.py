@@ -7,16 +7,93 @@ import zipfile
 import argparse
 
 
-def process_markdown(md_path):
-    with open(md_path, "r", encoding="utf-8") as f:
-        content = f.read()
+def md_to_html(content):
+    lines = content.split("\n")
+    result = []
+    in_table = False
+    table_rows = []
 
-    html_content = content
-    img_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+\.png)\)")
-    img_matches = img_pattern.findall(content)
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cols = [c.strip() for c in stripped.strip("|").split("|")]
+            if all(c in ("---", "") or not any(c) for c in cols):
+                continue
+            table_rows.append(cols)
+            in_table = True
+        else:
+            if in_table and table_rows:
+                result.append(_render_table(table_rows))
+                table_rows = []
+                in_table = False
+            result.append(line)
+
+    if in_table and table_rows:
+        result.append(_render_table(table_rows))
+
+    text = "\n".join(result)
+
+    out_parts = []
+    pos = 0
+    while pos < len(text):
+        fence_start = text.find("```", pos)
+        if fence_start == -1:
+            out_parts.append(_render_inline(text[pos:]))
+            break
+        out_parts.append(_render_inline(text[pos:fence_start]))
+        fence_end = text.find("```", fence_start + 3)
+        if fence_end == -1:
+            out_parts.append(_render_inline(text[fence_start:]))
+            break
+        code_content = text[fence_start + 3 : fence_end]
+        out_parts.append(
+            '<pre style="background:#f4f4f4;border:1px solid #ddd;'
+            "border-radius:4px;padding:12px;overflow-x:auto;margin:10px 0;"
+            "font-family:monospace;font-size:13px;white-space:pre-wrap;"
+            'word-break:break-all;"><code>' + code_content + "</code></pre>"
+        )
+        pos = fence_end + 3
+
+    return "".join(out_parts)
+
+
+def _render_inline(text):
+    lines = text.split("\n")
+    rendered = []
+    for ln in lines:
+        ln = re.sub(r"^#{3}\s+(.+)$", r"<h4>\1</h4>", ln)
+        ln = re.sub(r"^#{2}\s+(.+)$", r"<h3>\1</h3>", ln)
+        ln = re.sub(r"^#\s+(.+)$", r"<h2>\1</h2>", ln)
+        ln = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", ln)
+        ln = re.sub(r"\*(.+?)\*", r"<em>\1</em>", ln)
+        rendered.append(ln)
+    return "\n".join(rendered)
+
+
+def _render_table(rows):
+    if not rows:
+        return ""
+    html = ['<table style="border-collapse:collapse;width:100%;margin:10px 0;">']
+    for i, row in enumerate(rows):
+        tag = "th" if i == 0 else "td"
+        style = "background:#f2f2f2;font-weight:bold;" if i == 0 else ""
+        html.append("<tr>")
+        for cell in row:
+            html.append(
+                f'<{tag} style="border:1px solid #ddd;padding:8px;{style}">{cell}</{tag}>'
+            )
+        html.append("</tr>")
+    html.append("</table>")
+    return "\n".join(html)
+
+
+def render_report_content(md_path):
+    with open(md_path, "r", encoding="utf-8") as mf:
+        raw = mf.read()
 
     md_dir = os.path.dirname(md_path)
-    for alt_text, img_name in img_matches:
+    img_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+\.png)\)")
+    for alt_text, img_name in img_pattern.findall(raw):
         img_path = os.path.join(md_dir, img_name)
         if os.path.isfile(img_path):
             with open(img_path, "rb") as imgf:
@@ -26,13 +103,10 @@ def process_markdown(md_path):
                 "alt='" + alt_text + "' style='max-width:100%;height:auto;"
                 "border:1px solid #ddd;margin:10px 0;'/><br/>"
             )
-            md_img_ref = "![" + alt_text + "](" + img_name + ")"
-            html_content = html_content.replace(md_img_ref, img_tag)
+            raw = raw.replace("![" + alt_text + "](" + img_name + ")", img_tag)
 
-    html_content = (
-        html_content.replace("\\", "\\\\").replace("\n", "<br/>").replace("\r", "")
-    )
-    return html_content
+    html = md_to_html(raw)
+    return html
 
 
 def main():
@@ -77,8 +151,8 @@ def main():
             run_id,
         )
 
-    report_blocks = []
     report_count = 0
+    report_html = ""
 
     if os.path.isdir(analysis_dir):
         for root, dirs, files in os.walk(analysis_dir):
@@ -89,14 +163,19 @@ def main():
                         fname.replace(".md", "").replace("_", " ").replace("-", " ")
                     )
                     try:
-                        html_content = process_markdown(fpath)
-                        report_blocks.append(
-                            {"title": fname_title, "content": html_content}
+                        content_html = render_report_content(fpath)
+                        report_html += (
+                            '<div class="report-block">'
+                            '<h3 style="margin-top:0;color:#2196F3;border-bottom:1px solid #ddd;padding-bottom:10px;">'
+                            + fname_title
+                            + "</h3>"
+                            '<div class="report-content">' + content_html + "</div>"
+                            "</div>"
                         )
                         report_count += 1
                         print(f"Processed: {fname}", file=sys.stderr)
                     except Exception as e:
-                        print(f"Error reading {fpath}: {e}", file=sys.stderr)
+                        print(f"Error: {fpath}: {e}", file=sys.stderr)
 
         with zipfile.ZipFile(args.output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(analysis_dir):
@@ -125,18 +204,22 @@ def main():
 
     test_status = "成功" if report_count > 0 else "失败/无结果"
 
-    result = {
-        "report_count": report_count,
-        "report_blocks": report_blocks,
-        "log_file_names": log_file_names,
-        "test_status": test_status,
-    }
+    output_dir = os.path.dirname(args.output_json)
+    os.makedirs(output_dir, exist_ok=True)
 
-    with open(args.output_json, "w", encoding="utf-8") as out:
-        json.dump(result, out, ensure_ascii=False, indent=2)
+    with open(os.path.join(output_dir, "report_count.txt"), "w", encoding="utf-8") as f:
+        f.write(str(report_count))
+    with open(os.path.join(output_dir, "report_html.txt"), "w", encoding="utf-8") as f:
+        f.write(report_html)
+    with open(
+        os.path.join(output_dir, "log_file_names.txt"), "w", encoding="utf-8"
+    ) as f:
+        f.write(log_file_names)
+    with open(os.path.join(output_dir, "test_status.txt"), "w", encoding="utf-8") as f:
+        f.write(test_status)
 
     print(f"Report count: {report_count}", file=sys.stderr)
-    print(f"Done. JSON: {args.output_json}", file=sys.stderr)
+    print(f"Done. Files written to: {output_dir}", file=sys.stderr)
 
 
 if __name__ == "__main__":
