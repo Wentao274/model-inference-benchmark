@@ -25,6 +25,7 @@ def run_benchmark(
     test_suites,
     run_id,
     test_config,
+    random_range_ratio=None,
 ):
     print(f"Infra: {infra}")
     print(f"Model Name: {served_model_name}")
@@ -34,7 +35,8 @@ def run_benchmark(
     temperature = test_config.get("temperature", 0.7)
     seed = test_config.get("seed", 123)
     ready_timeout = test_config.get("ready-check-timeout-sec", 30)
-    random_range_ratio = test_config.get("random-range-ratio", 0.3)
+    if random_range_ratio is None:
+        random_range_ratio = test_config.get("random-range-ratio", 0.3)
 
     output_base = f"reports/{infra}/benchmark/{chip_name}/{served_model_name}"
 
@@ -194,6 +196,12 @@ def main():
         default=RUN_ID,
         help=f"Run ID to identify this test run (default: {RUN_ID})",
     )
+    parser.add_argument(
+        "--random-range-ratio",
+        type=float,
+        default=None,
+        help="Random range ratio for benchmark (default: use value from config file, 0.3)",
+    )
     args = parser.parse_args()
 
     config_path = os.path.join(os.path.dirname(__file__), "config", "test_suites.yaml")
@@ -223,6 +231,7 @@ def main():
         test_suites=test_suites_to_run,
         run_id=args.run_id,
         test_config=test_config,
+        random_range_ratio=args.random_range_ratio,
     )
 
 

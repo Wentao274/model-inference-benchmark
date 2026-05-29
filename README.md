@@ -17,6 +17,7 @@ Performance test of model inference
 | `--model-path` | 是 | 模型路径 |
 | `--test-suite` | 否 | 测试套件，默认：`test_01` |
 | `--run-id` | 否 | 运行标识符，默认：`01` |
+| `--random-range-ratio` | 否 | 随机范围比例，命令行优先级高于配置文件（配置文件中默认为 `0.3`） |
 
 ### 使用示例
 
@@ -52,6 +53,18 @@ python run_benchmark.py \
   --model Llama-2-7b \
   --model-path /models/Llama-2-7b \
   --test-suite test_02
+```
+
+**指定 random-range-ratio（命令行参数优先于配置文件）：**
+
+```bash
+python run_benchmark.py \
+  --infra vllm \
+  --base-url http://localhost:8080 \
+  --chip nvidia_h100 \
+  --model Llama-2-7b \
+  --model-path /models/Llama-2-7b \
+  --random-range-ratio 0.5
 ```
 
 ### 配置文件

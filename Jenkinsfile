@@ -8,6 +8,7 @@ pipeline {
         string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（test_01, test_02）')
         string(name: 'RUN_ID', defaultValue: '01', description: '运行标识符（用于标识本次测试，默认 01）')
+        string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.3', description: '随机范围比例（random-range-ratio）')
         string(name: 'COMPARE_WITH', defaultValue: '', description: '对比的运行 ID（可选，支持逗号分隔多个）')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '邮件接收者（逗号分隔）')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/model-inference-benchmark', description: '远程工作目录')
@@ -40,6 +41,7 @@ echo "模型路径: ${params.MODEL_PATH}"
 echo "BASE_URL: ${params.BASE_URL}"
 echo "测试套件: ${params.TEST_SUITE}"
 echo "测试ID: ${params.RUN_ID}"
+echo "随机范围比例: ${params.RANDOM_RANGE_RATIO}"
 echo "比对ID: ${params.COMPARE_WITH}"
 echo "BUILD_NUMBER: ${BUILD_NUMBER}"
 echo "=== Docker 检查 ==="
@@ -116,7 +118,8 @@ docker exec ${containerName} bash -c \
         --model ${params.MODEL} \
         --model-path ${params.MODEL_PATH} \
         --test-suite ${params.TEST_SUITE} \
-        --run-id ${params.RUN_ID}"
+        --run-id ${params.RUN_ID} \
+        --random-range-ratio ${params.RANDOM_RANGE_RATIO}"
 
 echo "=== Benchmark 执行完成 ==="
 ENDSSH
@@ -336,6 +339,7 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
         <tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>
         <tr><td>运行 ID</td><td>${runId}</td></tr>
+        <tr><td>随机范围比例</td><td>${params.RANDOM_RANGE_RATIO}</td></tr>
 """
                         if (compareWith) {
                             emailBody += """
