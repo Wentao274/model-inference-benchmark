@@ -2,7 +2,7 @@ test-config:
   suites:
     test_01:
       dataset-name: random
-      max-concurrency: [ 1, 64 ]
+      max-concurrency: [ 1, 32, 64 ]
       num-prompts: [ 128 ]
       random-input-output-len: [ [ 50000, 200 ]]
     test_02:
