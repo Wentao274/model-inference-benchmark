@@ -1,16 +1,21 @@
 pipeline {
     agent any
     parameters {
+        string(name: 'TESTER', defaultValue: '', description: '测试人员名称')
         choice(name: 'INFRA', choices: ['vllm', 'sglang'], description: '推理框架')
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
+        choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
         string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型路径')
         string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（test_01, test_02）')
-        string(name: 'RUN_ID', defaultValue: '01', description: '运行标识符（用于标识本次测试，默认 01）')
-        string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.3', description: '随机范围比例（random-range-ratio）')
-        string(name: 'COMPARE_WITH', defaultValue: '', description: '对比的运行 ID（可选，支持逗号分隔多个）')
+        string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
+        string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '邮件接收者（逗号分隔）')
+        text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令')
+        text(name: 'ENV', defaultValue: '''GLM-5.1-FP8
+2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
+sglang v0.5.12''', description: '测试环境信息')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/model-inference-benchmark', description: '远程工作目录')
     }
     environment {
@@ -34,15 +39,17 @@ echo "=== 工作目录 ==="
 pwd
 ls -la
 echo "=== 测试参数信息 ==="
+echo "测试人员: ${params.TESTER}"
 echo "推理框架: ${params.INFRA}"
 echo "芯片类型: ${params.CHIP}"
+echo "PD分离模式: ${params.PD}"
 echo "模型服务名称: ${params.MODEL}"
 echo "模型路径: ${params.MODEL_PATH}"
 echo "BASE_URL: ${params.BASE_URL}"
 echo "测试套件: ${params.TEST_SUITE}"
-echo "测试ID: ${params.RUN_ID}"
+echo "测试轮数: ${params.ROUND}"
 echo "随机范围比例: ${params.RANDOM_RANGE_RATIO}"
-echo "比对ID: ${params.COMPARE_WITH}"
+echo "服务部署命令: ${params.SERVE}"
 echo "BUILD_NUMBER: ${BUILD_NUMBER}"
 echo "=== Docker 检查 ==="
 docker --version
@@ -63,12 +70,13 @@ ENDSSH
                     def infra = params.INFRA.toLowerCase()
                     def image = infra == 'vllm' ? env.VLLM_IMAGE : env.SGLANG_IMAGE
                     def containerName = "model-bench-${params.CHIP}-${params.MODEL}-${BUILD_NUMBER}"
+                    def round = params.ROUND.toInteger()
                     env.CONTAINER_NAME = containerName
 
                     println("=== 启动 ${infra.toUpperCase()} 容器 ===")
                     println("镜像: ${image}")
                     println("容器名: ${containerName}")
-                    println("RUN_ID: ${params.RUN_ID}")
+                    println("测试轮数: ${round}")
 
                     sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
@@ -108,8 +116,14 @@ unset http_proxy
 echo "=== 检查 Python 命令 ==="
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 echo "使用 Python 命令: \${PYTHON_CMD}"
-
-echo "=== 执行 run_benchmark.py (RUN_ID: ${params.RUN_ID}) ==="
+ENDSSH
+"""
+                            
+                            for (int i = 1; i <= round; i++) {
+                                def currentRunId = String.format('%02d', i)
+                                def bashCmd = """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
 docker exec ${containerName} bash -c \
     "\${PYTHON_CMD} run_benchmark.py \
         --infra ${params.INFRA} \
@@ -118,10 +132,21 @@ docker exec ${containerName} bash -c \
         --model ${params.MODEL} \
         --model-path ${params.MODEL_PATH} \
         --test-suite ${params.TEST_SUITE} \
-        --run-id ${params.RUN_ID} \
+        --run-id ${currentRunId} \
         --random-range-ratio ${params.RANDOM_RANGE_RATIO}"
-
-echo "=== Benchmark 执行完成 ==="
+echo "=== 第 ${i} 轮测试完成 ==="
+ENDSSH
+"""
+                                sh bashCmd
+                                if (i < round) {
+                                    println("=== 等待60秒后开始下一轮测试 ===")
+                                    sleep(time: 60, unit: 'SECONDS')
+                                }
+                            }
+                            
+                            sh """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+echo "=== 所有轮次 Benchmark 执行完成 ==="
 ENDSSH
 """
                         }
@@ -130,34 +155,47 @@ ENDSSH
             }
         }
 
-        stage('生成报告') {
+        stage('生成Markdown报告') {
             steps {
                 script {
                     def containerName = env.CONTAINER_NAME
-                    def compareParam = params.COMPARE_WITH ? "--compare-with '${params.COMPARE_WITH}'" : ""
+                    def round = params.ROUND.toInteger()
+                    def buildsDir = "builds/${BUILD_NUMBER}"
+                    def envParam = params.ENV.replace('\n', '\\n')
+                    def serveParam = params.SERVE.replace('\n', '\\n')
 
                     sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            sh """
+                            def mdOutput = sh(
+                                script: """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 set -e
 echo "=== 检查 Python 命令 ==="
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 echo "使用 Python 命令: \${PYTHON_CMD}"
 
-echo "=== 执行 generate_report.py (RUN_ID: ${params.RUN_ID}) ==="
+echo "=== 执行 generate_md.py ==="
 docker exec ${containerName} bash -c \
-    "\${PYTHON_CMD} generate_report.py \
+    "\${PYTHON_CMD} /workspace/model-inference-benchmark/generate_md.py \
         --infra ${params.INFRA} \
         --chip ${params.CHIP} \
         --model ${params.MODEL} \
         --test-suite ${params.TEST_SUITE} \
-        --run-id ${params.RUN_ID} \
-        ${compareParam}"
+        --round ${round} \
+        --tester ${params.TESTER} \
+        --env '${envParam}' \
+        --serve '${serveParam}' \
+        --pd ${params.PD} \
+        --base-url '${params.BASE_URL}' \
+        --builds-dir /workspace/model-inference-benchmark/${buildsDir}" 2>&1 | tee /tmp/md_output.log
 
-echo "=== 报告生成完成 ==="
+grep "MARKDOWN_OUTPUT_FILE=" /tmp/md_output.log | cut -d'=' -f2
 ENDSSH
-"""
+""",
+                                returnStdout: true
+                            ).trim()
+                            env.MD_OUTPUT_FILE = mdOutput
+                            println("Markdown输出文件: ${mdOutput}")
                         }
                     }
                 }
@@ -169,32 +207,35 @@ ENDSSH
                 sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                         script {
-                            def runId = params.RUN_ID ?: '01'
-                            def compareWith = params.COMPARE_WITH ?: ''
-                            
-                            def reportsSrcPath = "reports/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${runId}"
+                            def round = params.ROUND.toInteger()
                             def buildsDir = "builds/${BUILD_NUMBER}"
                             
-                            def analysisSrcPath = ""
-                            if (compareWith) {
-                                def compareStr = compareWith.split(',').collect { it.trim() }.join('_')
-                                analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/compare_${compareStr}_${runId}"
-                            } else {
-                                analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${runId}"
-                            }
-                            
-                            println("=== 备份测试结果到 ${buildsDir} ===")
+                            println("=== 备份测试结果到 ${buildsDir} (共 ${round} 轮) ===")
                             
                             sh """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+set -e
+BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
+
+echo "=== 创建 builds 目录结构 ==="
+mkdir -p "\${BUILDS_DIR}/reports/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+mkdir -p "\${BUILDS_DIR}/analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+ENDSSH
+"""
+                            
+                            for (int i = 1; i <= round; i++) {
+                                def currentRunId = String.format('%02d', i)
+                                def reportsSrcPath = "reports/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${currentRunId}"
+                                def analysisSrcPath = "analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${currentRunId}"
+                                
+                                def bashCmd = """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 set -e
 BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 REPORTS_SRC=${params.WORK_DIR}/${reportsSrcPath}
 ANALYSIS_SRC=${params.WORK_DIR}/${analysisSrcPath}
 
-echo "=== 创建 builds 目录结构 ==="
-mkdir -p "\${BUILDS_DIR}/reports/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
-mkdir -p "\${BUILDS_DIR}/analysis/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+echo "=== 复制第 ${i} 轮结果 (RUN_ID: ${currentRunId}) ==="
 
 echo "=== 复制 reports 到 builds 目录 ==="
 if [ -d "\${REPORTS_SRC}" ]; then
@@ -211,9 +252,39 @@ if [ -d "\${ANALYSIS_SRC}" ]; then
 else
     echo "警告: analysis 源目录不存在: \${ANALYSIS_SRC}"
 fi
+ENDSSH
+"""
+                                sh bashCmd
+                            }
+                            
+                            sh """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+set -e
+BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
+CURDATE=\$(date +%Y-%m-%d)
+DASHBOARD_DIR="dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/\${CURDATE}"
+MD_FILE="\${DASHBOARD_DIR}/*.md"
+
+echo "=== 复制 markdown 文件到 builds 根目录 ==="
+if ls \${MD_FILE} 2>/dev/null; then
+    cp \${MD_FILE} "\${BUILDS_DIR}/"
+    echo "markdown 文件复制完成到: \${BUILDS_DIR}/"
+    ls -la "\${BUILDS_DIR}/"*.md 2>/dev/null || true
+else
+    echo "警告: markdown 文件不存在: \${MD_FILE}"
+fi
+
+echo "=== 复制 dashboard 目录到 builds 目录 ==="
+if [ -d "\${DASHBOARD_DIR}" ]; then
+    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/"
+    echo "dashboard 目录复制完成: \${DASHBOARD_DIR} -> \${BUILDS_DIR}/dashboard/"
+else
+    echo "警告: dashboard 目录不存在: \${DASHBOARD_DIR}"
+fi
 
 echo "=== 备份完成，查看目录结构 ==="
-find "\${BUILDS_DIR}" -type d | head -20
+find ${params.WORK_DIR}/${buildsDir} -type d | head -30
 ENDSSH
 """
                         }
@@ -257,53 +328,32 @@ stage('发送邮件') {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     script {
                         def infra = params.INFRA.toUpperCase()
-                        def runId = params.RUN_ID ?: '01'
-                        def compareWith = params.COMPARE_WITH ?: ''
+                        def round = params.ROUND.toInteger()
+                        def runIdList = (1..round).collect { String.format('%02d', it) }.join(', ')
                         def buildsDir = "builds/${BUILD_NUMBER}"
-
-                        def containerName = env.CONTAINER_NAME
-                        def remoteTmpDir = "/workspace/model-inference-benchmark/tmp"
-                        def localTmpDir = "/tmp/email_data_${BUILD_NUMBER}"
-                        def localZip = "${buildsDir}/benchmark_reports_${BUILD_NUMBER}.zip"
-
-                        sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
-                            sh """
-ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
-mkdir -p ${params.WORK_DIR}/tmp
-mkdir -p ${remoteTmpDir}
-docker exec ${containerName} bash -c "mkdir -p ${remoteTmpDir}"
-docker exec ${containerName} python3 /workspace/model-inference-benchmark/generate_email.py \
-    --builds-dir /workspace/model-inference-benchmark/${buildsDir} \
-    --infra ${params.INFRA} \
-    --chip ${params.CHIP} \
-    --model ${params.MODEL} \
-    --test-suite ${params.TEST_SUITE} \
-    --run-id ${runId} \
-    --compare-with '${compareWith}' \
-    --build-number ${BUILD_NUMBER} \
-    --output-json ${remoteTmpDir}/report_count.txt \
-    --output-zip ${remoteTmpDir}/benchmark_reports_${BUILD_NUMBER}.zip
-ENDSSH
-"""
-                            sh """
-mkdir -p ${localTmpDir}
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/report_count.txt ${localTmpDir}/
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/report_html.txt ${localTmpDir}/
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/log_file_names.txt ${localTmpDir}/
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/test_status.txt ${localTmpDir}/
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/tmp/benchmark_reports_${BUILD_NUMBER}.zip ${localZip}
-"""
+                        
+                        def mdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
+                        def reportHtml = ""
+                        def testStatus = "成功"
+                        
+                        if (mdFiles && mdFiles.length > 0) {
+                            for (def mdFile : mdFiles) {
+                                def mdContent = readFile(mdFile.path)
+                                def mdHtml = convertMarkdownToHtml(mdContent)
+                                reportHtml += """
+                                    <div class="report-block">
+                                        <h3 style="margin-top:0;color:#2196F3;border-bottom:1px solid #ddd;padding-bottom:10px;">
+                                            ${mdFile.name}
+                                        </h3>
+                                        <div class="report-content">${mdHtml}</div>
+                                    </div>
+                                """
+                            }
+                            testStatus = "成功"
+                        } else {
+                            reportHtml = '<p>无报告文件</p>'
+                            testStatus = "失败/无结果"
                         }
-
-                        def reportCount = readFile("${localTmpDir}/report_count.txt").trim().toInteger()
-                        def reportHtml = readFile("${localTmpDir}/report_html.txt").trim()
-                        def logFileNames = readFile("${localTmpDir}/log_file_names.txt").trim()
-                        def runTestStatus = readFile("${localTmpDir}/test_status.txt").trim()
 
                         def emailBody = """
 <html>
@@ -312,7 +362,7 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
         .container { max-width: 1000px; margin: 0 auto; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .header { background-color: ${reportCount > 0 ? '#2196F3' : '#f44336'}; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
+        .header { background-color: ${testStatus == '成功' ? '#2196F3' : '#f44336'}; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
         .content { padding: 20px; }
         table { border-collapse: collapse; width: 100%; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
@@ -320,6 +370,8 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         h3 { color: #333; border-bottom: 2px solid #2196F3; padding-bottom: 5px; }
         .report-block { margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; background-color: #fafafa; border-radius: 5px; }
         .report-content { font-size: 13px; line-height: 1.5; background-color: #f9f9f9; padding: 15px; border-radius: 3px; max-height: 600px; overflow-y: auto; }
+        .report-content pre { background:#f4f4f4;border:1px solid #ddd;border-radius:4px;padding:12px;overflow-x:auto;margin:10px 0;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all; }
+        .report-content code { font-family: monospace; }
     </style>
 </head>
 <body>
@@ -338,24 +390,15 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
         <tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>
-        <tr><td>运行 ID</td><td>${runId}</td></tr>
+        <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
+        <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>随机范围比例</td><td>${params.RANDOM_RANGE_RATIO}</td></tr>
-"""
-                        if (compareWith) {
-                            emailBody += """
-        <tr><td>对比运行 ID</td><td>${compareWith}</td></tr>
-"""
-                        }
-                        emailBody += """
         <tr><td>执行时间</td><td>${currentBuild.durationString}</td></tr>
-        <tr><td>测试状态</td><td>${runTestStatus}</td></tr>
+        <tr><td>测试状态</td><td>${testStatus}</td></tr>
     </table>
 
-    <h3>测试日志</h3>
-    ${logFileNames}
-
     <h3>测试报告内容</h3>
-    ${reportHtml ?: '<p>无报告文件</p>'}
+    ${reportHtml}
 
     <p style="margin-top: 20px;"><b>详细日志和报告已归档到 Jenkins 构建 artifacts 中。</b></p>
     <p>Jenkins 构建地址: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
@@ -368,15 +411,15 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 </html>"""
 
                         println("=== 发送邮件 ===")
-                        println("报告数量: ${reportCount}")
-                        println("测试状态: ${runTestStatus}")
+                        println("报告数量: ${mdFiles ? mdFiles.length : 0}")
+                        println("测试状态: ${testStatus}")
 
                         emailext(
-                            subject: "[模型推理 - Benchmark测试报告] #${BUILD_NUMBER} ${params.CHIP} - ${params.MODEL} - RUN_ID:${runId} (${infra})",
+                            subject: "[模型推理 - Benchmark测试报告] #${BUILD_NUMBER} ${params.CHIP} - ${params.MODEL} - ${round}轮测试 (${infra})",
                             body: emailBody,
                             to: "${params.RECIPIENTS}",
                             mimeType: 'text/html',
-                            attachmentsPattern: "builds/${BUILD_NUMBER}/*.zip,builds/${BUILD_NUMBER}/**/*.log"
+                            attachmentsPattern: "builds/${BUILD_NUMBER}/*.md,builds/${BUILD_NUMBER}/**/*.log"
                         )
                     }
                 }
