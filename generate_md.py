@@ -10,28 +10,28 @@ from pathlib import Path
 def parse_serve_command(serve_cmd):
     result = {}
 
-    dp_patterns = [r"--dp-size\s+(\d+)", r"--dp\s+(\d+)"]
+    dp_patterns = [r"--dp-size\s+(\d+)", r"--dp\s+(\d+)", r"-dp\s+(\d+)"]
     for pattern in dp_patterns:
         match = re.search(pattern, serve_cmd)
         if match:
             result["dp"] = match.group(1)
             break
 
-    tp_patterns = [r"--tp-size\s+(\d+)", r"--tp\s+(\d+)"]
+    tp_patterns = [r"--tp-size\s+(\d+)", r"--tp\s+(\d+)", r"-tp\s+(\d+)"]
     for pattern in tp_patterns:
         match = re.search(pattern, serve_cmd)
         if match:
             result["tp"] = match.group(1)
             break
 
-    pp_patterns = [r"--pp-size\s+(\d+)", r"--pp\s+(\d+)"]
+    pp_patterns = [r"--pp-size\s+(\d+)", r"--pp\s+(\d+)", r"-pp\s+(\d+)"]
     for pattern in pp_patterns:
         match = re.search(pattern, serve_cmd)
         if match:
             result["pp"] = match.group(1)
             break
 
-    ep_patterns = [r"--ep-size\s+(\d+)", r"--ep\s+(\d+)"]
+    ep_patterns = [r"--ep-size\s+(\d+)", r"--ep\s+(\d+)", r"-ep\s+(\d+)"]
     for pattern in ep_patterns:
         match = re.search(pattern, serve_cmd)
         if match:
@@ -346,20 +346,26 @@ def generate_md_report(
     for cmd_line in bench_cmd.strip().split("\n"):
         md_lines.append(cmd_line)
 
+    total_rounds = max(round_count, 3)
+
     for conc in concurrencies:
         md_lines.append("")
         md_lines.append(f"## C{conc}")
         md_lines.append("")
 
-        for i, run_id in enumerate(round_run_ids):
+        for i in range(total_rounds):
             md_lines.append(f"### R{i + 1}")
 
-            metrics = get_chip_metrics(base_path, run_id, conc, infra)
-            if metrics and (
-                metrics.get("Backend") or metrics.get("Successful requests")
-            ):
-                formatted = format_metrics_for_md(metrics, infra)
-                md_lines.append(formatted)
+            if i < round_count:
+                run_id = f"{i + 1:02d}"
+                metrics = get_chip_metrics(base_path, run_id, conc, infra)
+                if metrics and (
+                    metrics.get("Backend") or metrics.get("Successful requests")
+                ):
+                    formatted = format_metrics_for_md(metrics, infra)
+                    md_lines.append(formatted)
+                else:
+                    md_lines.append("pass")
             else:
                 md_lines.append("pass")
 
@@ -413,14 +419,26 @@ def main():
     parser.add_argument(
         "--env",
         type=str,
-        required=True,
+        default=None,
         help="Environment information (from Jenkinsfile ENV parameter)",
+    )
+    parser.add_argument(
+        "--env-file",
+        type=str,
+        default=None,
+        help="File path containing environment information",
     )
     parser.add_argument(
         "--serve",
         type=str,
-        required=True,
+        default=None,
         help="Serve command (from Jenkinsfile SERVE parameter)",
+    )
+    parser.add_argument(
+        "--serve-file",
+        type=str,
+        default=None,
+        help="File path containing serve command",
     )
     parser.add_argument(
         "--pd",
@@ -442,6 +460,18 @@ def main():
         help="Builds directory path (e.g., builds/123)",
     )
     parser.add_argument(
+        "--build-number",
+        type=str,
+        default=None,
+        help="Jenkins build number for locating reports with build isolation",
+    )
+    parser.add_argument(
+        "--reports-dir",
+        type=str,
+        default=None,
+        help="Reports directory path (default: same as builds-dir)",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=None,
@@ -450,12 +480,38 @@ def main():
 
     args = parser.parse_args()
 
-    base_path = f"{args.builds_dir}/reports/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+    if args.env_file:
+        with open(args.env_file, "r", encoding="utf-8") as f:
+            env_value = f.read().strip()
+    elif args.env:
+        env_value = args.env
+    else:
+        print("Error: --env or --env-file is required")
+        return
+
+    if args.serve_file:
+        with open(args.serve_file, "r", encoding="utf-8") as f:
+            serve_value = f.read().strip()
+    elif args.serve:
+        serve_value = args.serve
+    else:
+        print("Error: --serve or --serve-file is required")
+        return
+
+    reports_dir = args.reports_dir if args.reports_dir else args.builds_dir
+    if args.tester and args.build_number:
+        base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+    elif args.tester:
+        base_path = f"{reports_dir}/reports/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+    elif args.build_number:
+        base_path = f"{reports_dir}/reports/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+    else:
+        base_path = f"{reports_dir}/reports/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
 
     output_file = args.output
     if output_file is None:
         curdate = datetime.now().strftime("%Y-%m-%d")
-        title_suffix = build_title_suffix(args.serve)
+        title_suffix = build_title_suffix(serve_value)
         if title_suffix:
             file_name = f"{args.model}-{args.infra}-{args.pd}-{title_suffix}.md"
         else:
@@ -484,8 +540,8 @@ def main():
         model_name=args.model,
         test_suite=args.test_suite,
         round_count=args.round,
-        env=args.env,
-        serve=args.serve,
+        env=env_value,
+        serve=serve_value,
         pd=args.pd,
         base_path=base_path,
         base_url=args.base_url,

@@ -26,6 +26,8 @@ def run_benchmark(
     run_id,
     test_config,
     random_range_ratio=None,
+    build_number=None,
+    tester=None,
 ):
     print(f"Infra: {infra}")
     print(f"Model Name: {served_model_name}")
@@ -39,6 +41,14 @@ def run_benchmark(
         random_range_ratio = test_config.get("random-range-ratio", 0.3)
 
     output_base = f"reports/{infra}/benchmark/{chip_name}/{served_model_name}"
+    if tester and build_number:
+        output_base = f"reports/{tester}/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}"
+    elif tester:
+        output_base = (
+            f"reports/{tester}/{infra}/benchmark/{chip_name}/{served_model_name}"
+        )
+    elif build_number:
+        output_base = f"reports/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}"
 
     params_config = test_config.get("suites", {})
 
@@ -202,6 +212,18 @@ def main():
         default=None,
         help="Random range ratio for benchmark (default: use value from config file, 0.3)",
     )
+    parser.add_argument(
+        "--build-number",
+        type=str,
+        default=None,
+        help="Jenkins build number for isolating test results",
+    )
+    parser.add_argument(
+        "--tester",
+        type=str,
+        default=None,
+        help="Tester name for isolating test results",
+    )
     args = parser.parse_args()
 
     config_path = os.path.join(os.path.dirname(__file__), "config", "test_suites.yaml")
@@ -232,6 +254,8 @@ def main():
         run_id=args.run_id,
         test_config=test_config,
         random_range_ratio=args.random_range_ratio,
+        build_number=args.build_number,
+        tester=args.tester,
     )
 
 
