@@ -2,13 +2,13 @@ test-config:
   suites:
     test_01:
       round: 3
-      dataset-name: random
+      dataset-name: random-ids
       max-concurrency: [ 10, 30, 60 ]
       num-prompts: [ 100 ]
       random-input-output-len: [ [ 50000, 200 ]]
     test_02:
       round: 3
-      dataset-name: random
+      dataset-name: random-ids
       max-concurrency: [ 1, 10 ]
       num-prompts: [ 100 ]
       random-input-output-len: [[ 194560, 1024 ]]

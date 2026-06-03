@@ -1,0 +1,7 @@
+离线数据文件目录
+
+将 ShareGPT_V3_unfiltered_cleaned_split.json 放至此目录，
+sglang benchmark 运行时将自动使用本地文件，无需联网下载。
+
+下载地址：
+  https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json

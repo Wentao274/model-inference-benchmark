@@ -91,11 +91,13 @@ docker rm -f ${containerName} 2>/dev/null || true
 
 echo "=== 启动容器 ==="
 docker run -d --name ${containerName} \
+    --network host \
     --memory=32g \
     --shm-size=1g \
     --entrypoint bash \
     -v ${params.WORK_DIR}:/workspace/bench-dashboard/model-inference-benchmark \
     -v ${params.MODEL_PATH}:${params.MODEL_PATH} \
+    -v /root/.cache/huggingface:/root/.cache/huggingface \
     -w /workspace/bench-dashboard/model-inference-benchmark \
     ${image} \
     -c "sleep infinity"
@@ -124,6 +126,9 @@ ENDSSH
                                 def bashCmd = """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
+#export https_proxy=http://100.64.1.68:1080
+#export http_proxy=http://100.64.1.68:1080
+#export no_proxy=.cn,.aliyun.com,.alayanew.com,localhost,127.0.0.1,0.0.0.0
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 docker exec ${containerName} bash -c \
     "\${PYTHON_CMD} run_benchmark.py \\
@@ -150,6 +155,9 @@ ENDSSH
                             sh """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 echo "=== 所有轮次 Benchmark 执行完成 ==="
+#unset https_proxy
+#unset http_proxy
+#unset no_proxy
 ENDSSH
 """
                         }
@@ -232,33 +240,9 @@ set -e
 BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 
 echo "=== 创建 builds 目录结构 ==="
-mkdir -p "\${BUILDS_DIR}/reports/${params.TESTER}/build-${BUILD_NUMBER}/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+mkdir -p "\${BUILDS_DIR}"
 ENDSSH
 """
-                            
-                            for (int i = 1; i <= round; i++) {
-                                def currentRunId = String.format('%02d', i)
-                                def reportsSrcPath = "reports/${params.TESTER}/build-${BUILD_NUMBER}/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/${currentRunId}"
-                                
-                                def bashCmd = """
-ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
-set -e
-BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
-REPORTS_SRC=${params.WORK_DIR}/${reportsSrcPath}
-
-echo "=== 复制第 ${i} 轮结果 (RUN_ID: ${currentRunId}) ==="
-
-echo "=== 复制 reports 到 builds 目录 ==="
-if [ -d "\${REPORTS_SRC}" ]; then
-    cp -r "\${REPORTS_SRC}" "\${BUILDS_DIR}/reports/${params.TESTER}/build-${BUILD_NUMBER}/${params.INFRA}/benchmark/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/"
-    echo "reports 复制完成: \${REPORTS_SRC} -> \${BUILDS_DIR}/reports/"
-else
-    echo "警告: reports 源目录不存在: \${REPORTS_SRC}"
-fi
-ENDSSH
-"""
-                                sh bashCmd
-                            }
                             
                             sh """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
@@ -266,15 +250,6 @@ set -e
 BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 CURDATE=\$(date +%Y-%m-%d)
 DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/\${CURDATE}"
-
-echo "=== 复制 markdown 文件到 builds 根目录 ==="
-if ls \${DASHBOARD_DIR}/*.md 2>/dev/null; then
-    cp \${DASHBOARD_DIR}/*.md "\${BUILDS_DIR}/"
-    echo "markdown 文件复制完成到: \${BUILDS_DIR}/"
-    ls -la "\${BUILDS_DIR}/"*.md 2>/dev/null || true
-else
-    echo "警告: markdown 文件不存在: \${DASHBOARD_DIR}/*.md"
-fi
 
 echo "=== 复制 dashboard 目录到 builds 目录 ==="
 if [ -d "\${DASHBOARD_DIR}" ]; then
@@ -450,7 +425,7 @@ find ./${buildsDir} -name '*.md' | wc -l
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 set -e
 
-MD_FILES=\$(find ${workDir}/${buildsDir}/dashboard -name '*.md' 2>/dev/null || true)
+MD_FILES=\$(find ${workDir}/${buildsDir}/dashboard -path "*${curDate}*" -name '*.md' 2>/dev/null || true)
 if [ -z "\${MD_FILES}" ]; then
     echo "警告: 未找到 markdown 文件"
     exit 0

@@ -132,7 +132,7 @@ def run_benchmark(
                     "--base-url",
                     base_url,
                     "--dataset-name",
-                    test_params.get("dataset-name", "random"),
+                    test_params.get("dataset-name", "random-ids"),
                     "--random-range-ratio",
                     str(random_range_ratio),
                     "--served-model-name",
