@@ -150,6 +150,10 @@ def run_benchmark(
                 ]
                 if model_path:
                     cmd.extend(["--model", model_path])
+                output_file = os.path.join(
+                    output_dir, f"bench-{test_suite}-{nc}-{np}-i{ni}-o{no}.jsonl"
+                )
+                cmd.extend(["--output-file", output_file])
             else:
                 raise ValueError(f"Unknown infra: {infra}")
 
