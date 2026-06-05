@@ -283,6 +283,7 @@ rm -rf ${buildsDir}
 mkdir -p builds
 
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/${buildsDir}/ ./builds/
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/import_benchmark.py ./import_benchmark.py
 
 echo "=== 拉取完成，查看目录结构 ==="
 find ./${buildsDir} -maxdepth 3 -type d
@@ -426,10 +427,6 @@ find ./${buildsDir} -name '*.md' | wc -l
                         sh "python3 import_benchmark.py --tester '${params.TESTER}' --test-date '${curDate}' --md-files ${mdPaths}"
                         
                         println("=== 解析入库完成 ===")
-                    }
-                }
-            }
-        }
                     }
                 }
             }
