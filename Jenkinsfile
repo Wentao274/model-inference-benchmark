@@ -16,7 +16,7 @@ pipeline {
         text(name: 'ENV', defaultValue: '''Kimi-K2.6
 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
 vllm v0.21.0''', description: '测试环境信息')
-        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '远程工作目录')
+        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要修改')
     }
     environment {
         SSH_CREDENTIALS = 'HOST_SSH_KEY'
@@ -408,44 +408,28 @@ find ./${buildsDir} -name '*.md' | wc -l
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     script {
-                        def containerName = env.CONTAINER_NAME
                         def curDate = new Date().format('yyyy-MM-dd')
                         def buildsDir = "builds/${BUILD_NUMBER}"
-                        def workDir = params.WORK_DIR
                         
                         println("=== 解析并入库测试结果 ===")
                         println("测试人员: ${params.TESTER}")
                         println("测试日期: ${curDate}")
                         
-                        sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
-                            sh """
-ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
-set -e
-
-MD_FILES=\$(find ${workDir}/${buildsDir}/dashboard -path "*${curDate}*" -name '*.md' 2>/dev/null || true)
-if [ -z "\${MD_FILES}" ]; then
-    echo "警告: 未找到 markdown 文件"
-    exit 0
-fi
-
-REMOTE_MD_FILES=""
-for f in \${MD_FILES}; do
-    REL_PATH=\${f#${workDir}/}
-    REMOTE_MD_FILES="\${REMOTE_MD_FILES} /workspace/bench-dashboard/model-inference-benchmark/\${REL_PATH}"
-done
-
-echo "=== 执行 import_benchmark.py ==="
-docker exec ${containerName} bash -c \
-    "cd /workspace/bench-dashboard/model-inference-benchmark && \
-    python3 import_benchmark.py \
-        --tester '${params.TESTER}' \
-        --test-date '${curDate}' \
-        --md-files \${REMOTE_MD_FILES}"
-
-echo "=== 解析入库完成 ==="
-ENDSSH
-"""
+                        def mdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
+                        if (!mdFiles || mdFiles.length == 0) {
+                            println("警告: 未找到 markdown 文件")
+                            return
                         }
+                        
+                        def mdPaths = mdFiles.collect { it.path }.join(' ')
+                        
+                        sh "python3 import_benchmark.py --tester '${params.TESTER}' --test-date '${curDate}' --md-files ${mdPaths}"
+                        
+                        println("=== 解析入库完成 ===")
+                    }
+                }
+            }
+        }
                     }
                 }
             }

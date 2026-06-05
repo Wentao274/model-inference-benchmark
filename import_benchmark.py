@@ -249,6 +249,9 @@ def preview_and_import(
     print(f"测试日期: {test_date}")
     print(f"文件数量: {len(md_files)}")
 
+    os.environ["http_proxy"] = "http://100.64.1.68:1080"
+    os.environ["https_proxy"] = "http://100.64.1.68:1080"
+
     try:
         body, boundary = _build_multipart_body(fields, files_data)
 
@@ -328,6 +331,9 @@ def preview_and_import(
     except Exception as e:
         print(f"请求出错: {e}")
         return False
+    finally:
+        os.environ.pop("http_proxy", None)
+        os.environ.pop("https_proxy", None)
 
 
 def main():
