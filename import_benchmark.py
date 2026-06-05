@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 import urllib.request
 import urllib.error
 
-DEFAULT_BASE_URL = "http://10.220.70.30:18080"
+DEFAULT_BASE_URL = "http://10.220.75.93:18080"
 
 
 def parse_markdown_for_api(md_path: str) -> Dict[str, Any]:

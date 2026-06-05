@@ -6,8 +6,8 @@ pipeline {
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
         choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
-        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型路径')
-        string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址')
+        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径 (必填，目前仅支持五区的模型路径，请只修改xxx/llms/后的路径名，前面的不要改动)')
+        string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址，注意没有/v1后缀')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
@@ -126,9 +126,6 @@ ENDSSH
                                 def bashCmd = """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
-#export https_proxy=http://100.64.1.68:1080
-#export http_proxy=http://100.64.1.68:1080
-#export no_proxy=.cn,.aliyun.com,.alayanew.com,localhost,127.0.0.1,0.0.0.0
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 docker exec ${containerName} bash -c \
     "\${PYTHON_CMD} run_benchmark.py \\
