@@ -78,7 +78,7 @@ def parse_benchmark_log(log_file, infra="sglang"):
             "Serving": "============ Serving Benchmark Result",
             "TTFT": "---------------Time to First Token",
             "TPOT": "-----Time per Output Token",
-            "ITL": "---------------Inter-token Latency",
+            "ITL": "---------------Inter-Token Latency",
         }
 
     for line in lines:
@@ -117,11 +117,50 @@ def load_test_suites(config_path="config/test_suites.yaml"):
     return {}
 
 
+def load_speed_bench_config():
+    config_path = "config/test_suites_speed_bench.yaml"
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    return {}
+
+
 def extract_concurrency_from_dir(dir_name):
     match = re.match(r"^(\d+)-", dir_name)
     if match:
         return match.group(1)
     return None
+
+
+def extract_concurrency_num_prompts_from_dir(dir_name):
+    match = re.match(r"c(\d+)-n(\d+)", dir_name)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+def get_all_concurrencies_speed_bench(base_path):
+    concurrency_set = set()
+    num_prompts_set = set()
+
+    if not os.path.exists(base_path):
+        return [], []
+
+    for round_dir in os.listdir(base_path):
+        round_path = os.path.join(base_path, round_dir)
+        if os.path.isdir(round_path):
+            for item in os.listdir(round_path):
+                item_path = os.path.join(round_path, item)
+                if os.path.isdir(item_path):
+                    conc, num_prompts = extract_concurrency_num_prompts_from_dir(item)
+                    if conc:
+                        concurrency_set.add(conc)
+                    if num_prompts:
+                        num_prompts_set.add(num_prompts)
+
+    return sorted(concurrency_set, key=lambda x: int(x)), sorted(
+        num_prompts_set, key=lambda x: int(x)
+    )
 
 
 def get_all_concurrencies(base_path, run_id):
@@ -159,65 +198,124 @@ def get_chip_metrics(base_path, run_id, concurrency, infra):
     return None
 
 
+def get_chip_metrics_speed_bench(base_path, round_id, concurrency, num_prompts, infra):
+    full_path = os.path.join(base_path, round_id)
+
+    if not os.path.exists(full_path):
+        print(f"Warning: Path does not exist: {full_path}")
+        return None
+
+    target_dir = f"c{concurrency}-n{num_prompts}"
+    target_path = os.path.join(full_path, target_dir)
+
+    if os.path.isdir(target_path):
+        log_files = glob.glob(os.path.join(target_path, "*.log"))
+        if log_files:
+            return parse_benchmark_log(log_files[0], infra)
+
+    return None
+
+
 def generate_benchmark_command(
-    infra, model_name, model_path, test_suite, concurrency, base_url
+    infra,
+    model_name,
+    model_path,
+    test_suite,
+    concurrency,
+    base_url,
+    dataset_type="random",
+    subset=None,
 ):
-    test_suites = load_test_suites()
-    suite_config = (
-        test_suites.get("test-config", {}).get("suites", {}).get(test_suite, {})
-    )
+    if dataset_type == "speed_bench":
+        speed_bench_config = load_speed_bench_config()
+        test_config = speed_bench_config.get("test-config", {})
+        dataset_name = test_config.get("dataset-name", "speed_bench")
+        dataset_path = test_config.get("dataset-path", "")
+        output_len = test_config.get("speed-bench-output-len", 1024)
+        temperature = test_config.get("temperature", 0.7)
+        seed = test_config.get("seed", 123)
+        ready_timeout = test_config.get("ready-check-timeout-sec", 30)
+        num_prompts = test_config.get("num-prompts", [200])[0]
 
-    dataset_name = suite_config.get("dataset-name", "random")
-    num_prompts = suite_config.get("num-prompts", [100])[0]
-    random_input_output_len = suite_config.get(
-        "random-input-output-len", [[50000, 200]]
-    )[0]
-    ni = random_input_output_len[0]
-    no = random_input_output_len[1]
-    temperature = test_suites.get("test-config", {}).get("temperature", 0.7)
-    seed = test_suites.get("test-config", {}).get("seed", 123)
-    random_range_ratio = test_suites.get("test-config", {}).get(
-        "random-range-ratio", 0.0
-    )
-    ready_timeout = test_suites.get("test-config", {}).get(
-        "ready-check-timeout-sec", 30
-    )
-
-    if infra == "vllm":
-        cmd_parts = [
-            "vllm bench serve",
-            "  --backend openai-chat",
-            "  --endpoint /v1/chat/completions",
-            f"  --dataset-name {dataset_name}",
-            f"  --random-input-len {ni}",
-            f"  --random-output-len {no}",
-            f"  --random-range-ratio {random_range_ratio}",
-            f"  --model {model_path}",
-            "  --trust-remote-code",
-            f"  --base-url {base_url}",
-            f"  --num-prompts {num_prompts}",
-            f"  --max-concurrency {concurrency}",
-            f"  --temperature {temperature}",
-            f"  --seed {seed}",
-            "  --metric_percentiles 95,99",
-            f"  --served-model-name {model_name}",
-            f"  --ready-check-timeout-sec {ready_timeout}",
-        ]
+        if infra == "vllm":
+            cmd_parts = [
+                "vllm bench serve",
+                "  --backend openai-chat",
+                "  --endpoint /v1/chat/completions",
+                f"  --dataset-name {dataset_name}",
+                f"  --speed-bench-dataset-subset throughput_{subset}",
+                f"  --dataset-path {dataset_path}",
+                f"  --model {model_path}",
+                "  --trust-remote-code",
+                f"  --base-url {base_url}",
+                f"  --num-prompts {num_prompts}",
+                f"  --max-concurrency {concurrency}",
+                f"  --speed-bench-output-len {output_len}",
+                f"  --temperature {temperature}",
+                f"  --seed {seed}",
+                "  --metric_percentiles 95,99",
+                f"  --served-model-name {model_name}",
+                f"  --ready-check-timeout-sec {ready_timeout}",
+            ]
+        else:
+            cmd_parts = [f"# speed_bench not supported for {infra}"]
     else:
-        cmd_parts = [
-            "python3 -m sglang.bench_serving",
-            "  --backend sglang-oai-chat",
-            f"  --base-url {base_url}",
-            f"  --dataset-name {dataset_name}",
-            f"  --random-range-ratio {random_range_ratio}",
-            f"  --served-model-name {model_name}",
-            f"  --random-input-len {ni}",
-            f"  --random-output-len {no}",
-            f"  --max-concurrency {concurrency}",
-            f"  --num-prompt {num_prompts}",
-            f"  --seed {seed}",
-            f"  --model {model_path}",
-        ]
+        test_suites = load_test_suites()
+        suite_config = (
+            test_suites.get("test-config", {}).get("suites", {}).get(test_suite, {})
+        )
+
+        dataset_name = suite_config.get("dataset-name", "random")
+        num_prompts = suite_config.get("num-prompts", [100])[0]
+        random_input_output_len = suite_config.get(
+            "random-input-output-len", [[50000, 200]]
+        )[0]
+        ni = random_input_output_len[0]
+        no = random_input_output_len[1]
+        temperature = test_suites.get("test-config", {}).get("temperature", 0.7)
+        seed = test_suites.get("test-config", {}).get("seed", 123)
+        random_range_ratio = test_suites.get("test-config", {}).get(
+            "random-range-ratio", 0.0
+        )
+        ready_timeout = test_suites.get("test-config", {}).get(
+            "ready-check-timeout-sec", 30
+        )
+
+        if infra == "vllm":
+            cmd_parts = [
+                "vllm bench serve",
+                "  --backend openai-chat",
+                "  --endpoint /v1/chat/completions",
+                f"  --dataset-name {dataset_name}",
+                f"  --random-input-len {ni}",
+                f"  --random-output-len {no}",
+                f"  --random-range-ratio {random_range_ratio}",
+                f"  --model {model_path}",
+                "  --trust-remote-code",
+                f"  --base-url {base_url}",
+                f"  --num-prompts {num_prompts}",
+                f"  --max-concurrency {concurrency}",
+                f"  --temperature {temperature}",
+                f"  --seed {seed}",
+                "  --metric_percentiles 95,99",
+                f"  --served-model-name {model_name}",
+                f"  --ready-check-timeout-sec {ready_timeout}",
+            ]
+        else:
+            cmd_parts = [
+                "python3 -m sglang.bench_serving",
+                "  --backend sglang-oai-chat",
+                f"  --base-url {base_url}",
+                f"  --dataset-name {dataset_name}",
+                f"  --random-range-ratio {random_range_ratio}",
+                f"  --served-model-name {model_name}",
+                f"  --random-input-len {ni}",
+                f"  --random-output-len {no}",
+                f"  --max-concurrency {concurrency}",
+                f"  --num-prompt {num_prompts}",
+                f"  --seed {seed}",
+                f"  --model {model_path}",
+            ]
 
     return "\n".join(cmd_parts)
 
@@ -308,16 +406,31 @@ def generate_md_report(
     base_path,
     base_url,
     output_file,
+    dataset_type="random",
+    subset=None,
 ):
-    concurrencies = get_all_concurrencies(base_path, "01")
-    if not concurrencies:
-        print(f"No concurrency configurations found!")
-        return
+    if dataset_type == "speed_bench":
+        concurrencies, num_prompts_list = get_all_concurrencies_speed_bench(base_path)
+        if not concurrencies:
+            print(f"No concurrency configurations found!")
+            return
 
-    round_run_ids = [f"{i:02d}" for i in range(1, round_count + 1)]
+        first_num_prompts = num_prompts_list[0] if num_prompts_list else "200"
+        if not num_prompts_list:
+            num_prompts_list = ["200"]
+    else:
+        concurrencies = get_all_concurrencies(base_path, "01")
+        if not concurrencies:
+            print(f"No concurrency configurations found!")
+            return
+        num_prompts_list = None
+
+    round_ids = [f"r{i}" for i in range(1, round_count + 1)]
 
     title_suffix = build_title_suffix(serve)
-    if title_suffix:
+    if dataset_type == "speed_bench":
+        title = f"# {model_name}-{infra}-{pd}-{subset}"
+    elif title_suffix:
         title = f"# {model_name}-{infra}-{pd}-{title_suffix}"
     else:
         title = f"# {model_name}-{infra}-{pd}"
@@ -341,35 +454,70 @@ def generate_md_report(
     md_lines.append("### Bench")
     first_conc = concurrencies[0] if concurrencies else "10"
     bench_cmd = generate_benchmark_command(
-        infra, model_name, "${MODEL_PATH}", test_suite, first_conc, base_url
+        infra,
+        model_name,
+        "${MODEL_PATH}",
+        test_suite,
+        first_conc,
+        base_url,
+        dataset_type=dataset_type,
+        subset=subset,
     )
     for cmd_line in bench_cmd.strip().split("\n"):
         md_lines.append(cmd_line)
 
     total_rounds = max(round_count, 3)
 
-    for conc in concurrencies:
-        md_lines.append("")
-        md_lines.append(f"## C{conc}")
-        md_lines.append("")
+    if dataset_type == "speed_bench":
+        prompts_list = num_prompts_list or ["200"]
+        for conc in concurrencies:
+            for num_prompts in prompts_list:
+                md_lines.append("")
+                md_lines.append(f"## C{conc}-N{num_prompts}")
+                md_lines.append("")
 
-        for i in range(total_rounds):
-            md_lines.append(f"### R{i + 1}")
+                for i in range(total_rounds):
+                    md_lines.append(f"### R{i + 1}")
 
-            if i < round_count:
-                run_id = f"{i + 1:02d}"
-                metrics = get_chip_metrics(base_path, run_id, conc, infra)
-                if metrics and (
-                    metrics.get("Backend") or metrics.get("Successful requests")
-                ):
-                    formatted = format_metrics_for_md(metrics, infra)
-                    md_lines.append(formatted)
+                    if i < round_count:
+                        round_id = f"r{i + 1}"
+                        metrics = get_chip_metrics_speed_bench(
+                            base_path, round_id, conc, num_prompts, infra
+                        )
+                        if metrics and (
+                            metrics.get("Backend") or metrics.get("Successful requests")
+                        ):
+                            formatted = format_metrics_for_md(metrics, infra)
+                            md_lines.append(formatted)
+                        else:
+                            md_lines.append("pass")
+                    else:
+                        md_lines.append("pass")
+
+                    md_lines.append("")
+    else:
+        for conc in concurrencies:
+            md_lines.append("")
+            md_lines.append(f"## C{conc}")
+            md_lines.append("")
+
+            for i in range(total_rounds):
+                md_lines.append(f"### R{i + 1}")
+
+                if i < round_count:
+                    run_id = f"{i + 1:02d}"
+                    metrics = get_chip_metrics(base_path, run_id, conc, infra)
+                    if metrics and (
+                        metrics.get("Backend") or metrics.get("Successful requests")
+                    ):
+                        formatted = format_metrics_for_md(metrics, infra)
+                        md_lines.append(formatted)
+                    else:
+                        md_lines.append("pass")
                 else:
                     md_lines.append("pass")
-            else:
-                md_lines.append("pass")
 
-            md_lines.append("")
+                md_lines.append("")
 
     md_content = "\n".join(md_lines)
 
@@ -477,6 +625,19 @@ def main():
         default=None,
         help="Output markdown file path (default: <builds-dir>/benchmark_upload.md)",
     )
+    parser.add_argument(
+        "--dataset-type",
+        type=str,
+        default="random",
+        choices=["random", "speed_bench"],
+        help="Dataset type (default: random)",
+    )
+    parser.add_argument(
+        "--subset",
+        type=str,
+        default=None,
+        help="Speed bench subset (e.g., 1k, 2k, 8k, 16k, 32k) - required when dataset-type is speed_bench",
+    )
 
     args = parser.parse_args()
 
@@ -499,24 +660,46 @@ def main():
         return
 
     reports_dir = args.reports_dir if args.reports_dir else args.builds_dir
-    if args.tester and args.build_number:
-        base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
-    elif args.tester:
-        base_path = f"{reports_dir}/reports/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
-    elif args.build_number:
-        base_path = f"{reports_dir}/reports/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+    dataset_type = args.dataset_type.lower()
+
+    if dataset_type == "speed_bench":
+        subset = args.subset
+        if not subset:
+            print("Error: --subset is required when dataset-type is speed_bench")
+            return
+        if args.tester and args.build_number:
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/build-{args.build_number}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+        elif args.tester:
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+        elif args.build_number:
+            base_path = f"{reports_dir}/reports-speed_bench/build-{args.build_number}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+        else:
+            base_path = f"{reports_dir}/reports-speed_bench/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
     else:
-        base_path = f"{reports_dir}/reports/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+        if args.tester and args.build_number:
+            base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+        elif args.tester:
+            base_path = f"{reports_dir}/reports/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+        elif args.build_number:
+            base_path = f"{reports_dir}/reports/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+        else:
+            base_path = f"{reports_dir}/reports/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
 
     output_file = args.output
     if output_file is None:
         curdate = datetime.now().strftime("%Y-%m-%d")
         title_suffix = build_title_suffix(serve_value)
-        if title_suffix:
+        if dataset_type == "speed_bench":
+            file_name = f"{args.model}-{args.infra}-{args.pd}-{args.subset}.md"
+        elif title_suffix:
             file_name = f"{args.model}-{args.infra}-{args.pd}-{title_suffix}.md"
         else:
             file_name = f"{args.model}-{args.infra}-{args.pd}.md"
-        dashboard_dir = f"dashboard/{args.tester}/{args.infra}/{args.chip}/{args.model}/{args.test_suite}/{curdate}"
+
+        if dataset_type == "speed_bench":
+            dashboard_dir = f"dashboard/{args.tester}/{args.infra}/{args.chip}/{args.model}/speed_bench/{args.subset}/{curdate}"
+        else:
+            dashboard_dir = f"dashboard/{args.tester}/{args.infra}/{args.chip}/{args.model}/{args.test_suite}/{curdate}"
         Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
         output_file = f"{dashboard_dir}/{file_name}"
 
@@ -530,6 +713,8 @@ def main():
     print(f"Rounds: {args.round}")
     print(f"Tester: {args.tester}")
     print(f"PD Mode: {args.pd}")
+    print(f"Dataset Type: {dataset_type}")
+    print(f"Subset: {args.subset}")
     print(f"Base Path: {base_path}")
     print(f"Output File: {output_file}")
     print(f"{'=' * 60}\n")
@@ -546,6 +731,8 @@ def main():
         base_path=base_path,
         base_url=args.base_url,
         output_file=output_file,
+        dataset_type=dataset_type,
+        subset=args.subset,
     )
     print(f"MARKDOWN_OUTPUT_FILE={generated_file}")
 

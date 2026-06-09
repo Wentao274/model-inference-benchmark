@@ -1,0 +1,11 @@
+test-config:
+  dataset-name: speed_bench
+  dataset-path: /dingofs/data1/userdata/datasets/speed-bench-without-hle
+  dataset-level: [ 1k, 2k, 8k, 16k, 32k ]
+  round: 3
+  max-concurrency: [ 10, 30, 60 ]
+  num-prompts: [ 200 ]
+  speed-bench-output-len: 1024
+  temperature: 0.7
+  seed: 123
+  ready-check-timeout-sec: 30

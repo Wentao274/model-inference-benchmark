@@ -3,8 +3,6 @@ pipeline {
     parameters {
         string(name: 'TESTER', defaultValue: 'liwt', description: '测试人员名称')
         choice(name: 'INFRA', choices: ['vllm', 'sglang'], description: '推理框架')
-        choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型')
-        string(name: 'SUBSET', defaultValue: '1k', description: 'Speed Bench子集(仅speed_bench时使用,可选:1k,2k,8k,16k,32k)')
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
         choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
@@ -33,7 +31,6 @@ vllm v0.21.0''', description: '测试环境信息')
             steps {
                 sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                     script {
-                        def datasetType = params.DATASET_TYPE.toLowerCase()
                         println("=== 环境检查 ===")
                         sh """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
@@ -44,8 +41,6 @@ ls -la
 echo "=== 测试参数信息 ==="
 echo "测试人员: ${params.TESTER}"
 echo "推理框架: ${params.INFRA}"
-echo "数据集类型: ${params.DATASET_TYPE}"
-echo "Subset: ${params.SUBSET}"
 echo "芯片类型: ${params.CHIP}"
 echo "PD分离模式: ${params.PD}"
 echo "模型服务名称: ${params.MODEL}"
@@ -62,8 +57,6 @@ echo "=== 测试目录结构 ==="
 ls -la config/
 echo "=== 检查配置文件 ==="
 cat config/test_suites.yaml
-echo "=== 检查 speed_bench 配置文件 ==="
-cat config/test_suites_speed_bench.yaml
 ENDSSH
 """
                     }
@@ -71,11 +64,10 @@ ENDSSH
             }
         }
 
-stage('启动容器并运行 Benchmark') {
+        stage('启动容器并运行 Benchmark') {
             steps {
                 script {
                     def infra = params.INFRA.toLowerCase()
-                    def datasetType = params.DATASET_TYPE.toLowerCase()
                     def image = infra == 'vllm' ? env.VLLM_IMAGE : env.SGLANG_IMAGE
                     def containerName = "dashboard-model-bench-${params.CHIP}-${params.MODEL}-${BUILD_NUMBER}"
                     def round = params.ROUND.toInteger()
@@ -85,7 +77,6 @@ stage('启动容器并运行 Benchmark') {
                     println("镜像: ${image}")
                     println("容器名: ${containerName}")
                     println("测试轮数: ${round}")
-                    println("数据集类型: ${datasetType}")
 
                     sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
@@ -132,15 +123,11 @@ ENDSSH
                             
                             for (int i = 1; i <= round; i++) {
                                 def currentRunId = String.format('%02d', i)
-                                def bashCmd = ""
-                                
-                                if (datasetType == 'random') {
-                                    bashCmd = """
+                                def bashCmd = """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
-echo "数据集类型: random"
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
-docker exec ${containerName} bash -c \\
+docker exec ${containerName} bash -c \
     "\${PYTHON_CMD} run_benchmark.py \\
         --infra ${params.INFRA} \\
         --base-url '${params.BASE_URL}' \\
@@ -155,28 +142,6 @@ docker exec ${containerName} bash -c \\
 echo "=== 第 ${i} 轮测试完成 ==="
 ENDSSH
 """
-                                } else if (datasetType == 'speed_bench') {
-                                    bashCmd = """
-ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
-echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
-echo "数据集类型: speed_bench"
-echo "Subset: ${params.SUBSET}"
-PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
-docker exec ${containerName} bash -c \\
-    "\${PYTHON_CMD} run_benchmark_speed_bench.py \\
-        --infra ${params.INFRA} \\
-        --base-url '${params.BASE_URL}' \\
-        --chip ${params.CHIP} \\
-        --model ${params.MODEL} \\
-        --model-path ${params.MODEL_PATH} \\
-        --dataset-level ${params.SUBSET} \\
-        --run-id ${currentRunId} \\
-        --build-number ${BUILD_NUMBER} \\
-        --tester ${params.TESTER}"
-echo "=== 第 ${i} 轮测试完成 ==="
-ENDSSH
-"""
-                                }
                                 sh bashCmd
                                 if (i < round) {
                                     println("=== 等待60秒后开始下一轮测试 ===")
@@ -198,13 +163,12 @@ ENDSSH
             }
         }
 
-stage('生成Markdown报告') {
+        stage('生成Markdown报告') {
             steps {
                 script {
                     def containerName = env.CONTAINER_NAME
                     def round = params.ROUND.toInteger()
                     def buildsDir = "builds/${BUILD_NUMBER}"
-                    def datasetType = params.DATASET_TYPE.toLowerCase()
 
                     sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
@@ -242,9 +206,7 @@ docker exec ${containerName} bash -c \
         --base-url '${params.BASE_URL}' \
         --reports-dir /workspace/bench-dashboard/model-inference-benchmark \
         --build-number ${BUILD_NUMBER} \
-        --builds-dir /workspace/bench-dashboard/model-inference-benchmark/${buildsDir} \
-        --dataset-type ${datasetType} \
-        --subset ${params.SUBSET}" 2>&1 | tee /tmp/md_output.log
+        --builds-dir /workspace/bench-dashboard/model-inference-benchmark/${buildsDir}" 2>&1 | tee /tmp/md_output.log
 
 grep "MARKDOWN_OUTPUT_FILE=" /tmp/md_output.log | cut -d'=' -f2
 ENDSSH
@@ -266,8 +228,6 @@ ENDSSH
                         script {
                             def round = params.ROUND.toInteger()
                             def buildsDir = "builds/${BUILD_NUMBER}"
-                            def datasetType = params.DATASET_TYPE.toLowerCase()
-                            def dashboardSuite = datasetType == 'speed_bench' ? "speed_bench/${params.SUBSET}" : params.TEST_SUITE
                             
                             println("=== 备份测试结果到 ${buildsDir} (共 ${round} 轮) ===")
                             
@@ -286,12 +246,12 @@ ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 set -e
 BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 CURDATE=\$(date +%Y-%m-%d)
-DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/\${CURDATE}"
+DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/\${CURDATE}"
 
 echo "=== 复制 dashboard 目录到 builds 目录 ==="
 if [ -d "\${DASHBOARD_DIR}" ]; then
-    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}"
-    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/"
+    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}"
+    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${params.TEST_SUITE}/"
     echo "dashboard 目录复制完成: \${DASHBOARD_DIR} -> \${BUILDS_DIR}/dashboard/"
 else
     echo "警告: dashboard 目录不存在: \${DASHBOARD_DIR}"
@@ -408,8 +368,6 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>模型名称</td><td>${params.MODEL}</td></tr>
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
-        <tr><td>数据集类型</td><td>${params.DATASET_TYPE}</td></tr>
-        <tr><td>Subset</td><td>${params.SUBSET}</td></tr>
         <tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>
         <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
         <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
