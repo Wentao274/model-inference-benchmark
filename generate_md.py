@@ -471,18 +471,18 @@ def generate_md_report(
     if dataset_type == "speed_bench":
         prompts_list = num_prompts_list or ["200"]
         for conc in concurrencies:
-            for num_prompts in prompts_list:
-                md_lines.append("")
-                md_lines.append(f"## C{conc}-N{num_prompts}")
-                md_lines.append("")
+            md_lines.append("")
+            md_lines.append(f"## C{conc}")
+            md_lines.append("")
 
-                for i in range(total_rounds):
-                    md_lines.append(f"### R{i + 1}")
+            for i in range(total_rounds):
+                md_lines.append(f"### R{i + 1}")
 
-                    if i < round_count:
-                        round_id = f"r{i + 1}"
+                if i < round_count:
+                    run_id = f"{i + 1:02d}"
+                    for num_prompts in prompts_list:
                         metrics = get_chip_metrics_speed_bench(
-                            base_path, round_id, conc, num_prompts, infra
+                            base_path, run_id, conc, num_prompts, infra
                         )
                         if metrics and (
                             metrics.get("Backend") or metrics.get("Successful requests")
@@ -491,10 +491,10 @@ def generate_md_report(
                             md_lines.append(formatted)
                         else:
                             md_lines.append("pass")
-                    else:
-                        md_lines.append("pass")
+                else:
+                    md_lines.append("pass")
 
-                    md_lines.append("")
+                md_lines.append("")
     else:
         for conc in concurrencies:
             md_lines.append("")
@@ -668,13 +668,13 @@ def main():
             print("Error: --subset is required when dataset-type is speed_bench")
             return
         if args.tester and args.build_number:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/build-{args.build_number}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         elif args.tester:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         elif args.build_number:
-            base_path = f"{reports_dir}/reports-speed_bench/build-{args.build_number}/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         else:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.infra}/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
     else:
         if args.tester and args.build_number:
             base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"

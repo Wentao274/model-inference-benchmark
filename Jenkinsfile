@@ -3,14 +3,15 @@ pipeline {
     parameters {
         string(name: 'TESTER', defaultValue: 'liwt', description: '测试人员名称')
         choice(name: 'INFRA', choices: ['vllm', 'sglang'], description: '推理框架')
-        choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型')
-        string(name: 'SUBSET', defaultValue: '1k', description: 'Speed Bench子集(仅speed_bench时使用,可选:1k,2k,8k,16k,32k)')
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
         choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
         string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径 (必填，目前仅支持五区的模型路径，请只修改xxx/llms/后的路径名，前面的不要改动)')
         string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址，注意没有/v1后缀')
-        string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（test_01, test_02）')
+        choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型')
+        choice(name: 'SUBSET', choices: ['1k', '2k', '8k', '16k', '32k'], description: 'Speed Bench子集(仅speed_bench时使用)')
+        string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data1/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径(仅speed_bench时使用)')
+        string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（仅random数据集使用，可选: test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '邮件接收者（逗号分隔）')
@@ -79,6 +80,7 @@ stage('启动容器并运行 Benchmark') {
                     def image = infra == 'vllm' ? env.VLLM_IMAGE : env.SGLANG_IMAGE
                     def containerName = "dashboard-model-bench-${params.CHIP}-${params.MODEL}-${BUILD_NUMBER}"
                     def round = params.ROUND.toInteger()
+                    def speedBenchDatasetPath = params.SPEED_BENCH_DATASET_PATH
                     env.CONTAINER_NAME = containerName
 
                     println("=== 启动 ${infra.toUpperCase()} 容器 ===")
@@ -107,6 +109,7 @@ docker run -d --name ${containerName} \
     -v ${params.WORK_DIR}:/workspace/bench-dashboard/model-inference-benchmark \
     -v ${params.MODEL_PATH}:${params.MODEL_PATH} \
     -v /root/.cache/huggingface:/root/.cache/huggingface \
+    ${datasetType == 'speed_bench' ? "-v ${speedBenchDatasetPath}:${speedBenchDatasetPath}" : ""} \
     -w /workspace/bench-dashboard/model-inference-benchmark \
     ${image} \
     -c "sleep infinity"
@@ -169,8 +172,9 @@ docker exec ${containerName} bash -c \\
         --chip ${params.CHIP} \\
         --model ${params.MODEL} \\
         --model-path ${params.MODEL_PATH} \\
-        --dataset-level ${params.SUBSET} \\
-        --run-id ${currentRunId} \\
+        --dataset-level ${params.SUBSET} \
+        --dataset-path ${params.SPEED_BENCH_DATASET_PATH} \
+        --run-id ${currentRunId} \
         --build-number ${BUILD_NUMBER} \\
         --tester ${params.TESTER}"
 echo "=== 第 ${i} 轮测试完成 ==="
@@ -346,6 +350,8 @@ find ./${buildsDir} -name '*.md' | wc -l
                         def round = params.ROUND.toInteger()
                         def runIdList = (1..round).collect { String.format('%02d', it) }.join(', ')
                         def buildsDir = "builds/${BUILD_NUMBER}"
+                        def datasetType = params.DATASET_TYPE.toLowerCase()
+                        def datasetInfoRow = datasetType == 'speed_bench' ? "<tr><td>Subset</td><td>${params.SUBSET}</td></tr>" : "<tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>"
                         
                         def mdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
                         def reportHtml = ""
@@ -409,8 +415,7 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
         <tr><td>数据集类型</td><td>${params.DATASET_TYPE}</td></tr>
-        <tr><td>Subset</td><td>${params.SUBSET}</td></tr>
-        <tr><td>测试套件</td><td>${params.TEST_SUITE}</td></tr>
+        ${datasetInfoRow}
         <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
         <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>随机范围比例</td><td>${params.RANDOM_RANGE_RATIO}</td></tr>

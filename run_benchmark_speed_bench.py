@@ -24,6 +24,7 @@ def run_benchmark(
     run_id,
     build_number=None,
     tester=None,
+    dataset_path=None,
 ):
     print(f"Infra: {infra}")
     print(f"Model Name: {served_model_name}")
@@ -38,96 +39,89 @@ def run_benchmark(
         return
 
     dataset_name = test_config.get("dataset-name", "speed_bench")
-    dataset_path = test_config.get("dataset-path", "")
+    dataset_path = dataset_path or test_config.get("dataset-path", "")
     output_len = test_config.get("speed-bench-output-len", 1024)
     temperature = test_config.get("temperature", 0.7)
     seed = test_config.get("seed", 123)
     ready_timeout = test_config.get("ready-check-timeout-sec", 30)
     num_prompts_list = test_config.get("num-prompts") or [200]
     max_concurrency_list = test_config.get("max-concurrency") or [10, 30, 60]
-    rounds = test_config.get("round") or 3
 
     subset = f"throughput_{dataset_level}"
-    output_base = (
-        f"reports-speed_bench/{infra}/{chip_name}/{served_model_name}/{subset}/{run_id}"
-    )
+    output_base = f"reports-speed_bench/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
     if tester and build_number:
-        output_base = f"reports-speed_bench/{tester}/build-{build_number}/{infra}/{chip_name}/{served_model_name}/{subset}/{run_id}"
+        output_base = f"reports-speed_bench/{tester}/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
     elif tester:
-        output_base = f"reports-speed_bench/{tester}/{infra}/{chip_name}/{served_model_name}/{subset}/{run_id}"
+        output_base = f"reports-speed_bench/{tester}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
     elif build_number:
-        output_base = f"reports-speed_bench/build-{build_number}/{infra}/{chip_name}/{served_model_name}/{subset}/{run_id}"
+        output_base = f"reports-speed_bench/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
 
     if infra == "vllm":
         for nc in max_concurrency_list:
             for np in num_prompts_list:
-                for r in range(1, rounds + 1):
-                    round_id = f"r{r}"
-                    param_dir = f"{subset}/{round_id}/c{nc}-n{np}"
-                    output_dir = os.path.join(
-                        output_base.replace(f"/{subset}/{run_id}", ""), param_dir
-                    )
-                    Path(output_dir).mkdir(parents=True, exist_ok=True)
+                param_dir = f"{run_id}/c{nc}-n{np}"
+                output_dir = os.path.join(output_base, param_dir)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-                    log_file = os.path.join(
-                        output_dir,
-                        f"bench-{subset}-c{nc}-n{np}-{round_id}.log",
-                    )
+                log_file = os.path.join(
+                    output_dir,
+                    f"bench-{subset}-c{nc}-n{np}.log",
+                )
 
-                    cmd = [
-                        "vllm",
-                        "bench",
-                        "serve",
-                        "--backend",
-                        "openai-chat",
-                        "--endpoint",
-                        "/v1/chat/completions",
-                        "--dataset-name",
-                        dataset_name,
-                        "--speed-bench-dataset-subset",
-                        subset,
-                        "--dataset-path",
-                        dataset_path,
-                        "--model",
-                        str(model_path),
-                        "--trust-remote-code",
-                        "--base-url",
-                        base_url,
-                        "--num-prompts",
-                        str(np),
-                        "--max-concurrency",
-                        str(nc),
-                        "--speed-bench-output-len",
-                        str(output_len),
-                        "--temperature",
-                        str(temperature),
-                        "--seed",
-                        str(seed),
-                        "--metric_percentiles",
-                        "95,99",
-                        "--served-model-name",
-                        str(served_model_name),
-                        "--ready-check-timeout-sec",
-                        str(ready_timeout),
-                    ]
+                cmd = [
+                    "vllm",
+                    "bench",
+                    "serve",
+                    "--backend",
+                    "openai-chat",
+                    "--endpoint",
+                    "/v1/chat/completions",
+                    "--dataset-name",
+                    dataset_name,
+                    "--speed-bench-dataset-subset",
+                    subset,
+                    "--dataset-path",
+                    dataset_path,
+                    "--model",
+                    str(model_path),
+                    "--trust-remote-code",
+                    "--base-url",
+                    base_url,
+                    "--num-prompts",
+                    str(np),
+                    "--max-concurrency",
+                    str(nc),
+                    "--speed-bench-output-len",
+                    str(output_len),
+                    "--temperature",
+                    str(temperature),
+                    "--seed",
+                    str(seed),
+                    "--metric_percentiles",
+                    "95,99",
+                    "--served-model-name",
+                    str(served_model_name),
+                    "--ready-check-timeout-sec",
+                    str(ready_timeout),
+                ]
 
-                    print(f"Running round {r}/{rounds}: {' '.join(cmd)}")
-                    print(f"Log file: {log_file}")
+                print(f"Running: {' '.join(cmd)}")
+                print(f"Log file: {log_file}")
 
-                    log_f = open(log_file, "w")
-                    process = subprocess.Popen(
-                        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-                    )
+                log_f = open(log_file, "w")
+                process = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                )
 
-                    for line in process.stdout:
-                        print(line, end="")
-                        log_f.write(line)
+                for line in process.stdout:
+                    print(line, end="")
+                    log_f.write(line)
 
-                    process.wait()
-                    log_f.close()
+                process.wait()
+                log_f.close()
 
-                    print(f"Completed: {log_file}")
-                    time.sleep(60)
+                print(f"Completed: {log_file}")
+                time.sleep(60)
     else:
         raise ValueError(f"Only vllm infra is supported, got: {infra}")
 
@@ -178,6 +172,12 @@ def main():
         default=None,
         help="Tester name for isolating test results",
     )
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default=None,
+        help="Speed bench dataset path (falls back to config file if not provided)",
+    )
     args = parser.parse_args()
 
     config_path = os.path.join(
@@ -197,6 +197,7 @@ def main():
         run_id=args.run_id,
         build_number=args.build_number,
         tester=args.tester,
+        dataset_path=args.dataset_path,
     )
 
 
