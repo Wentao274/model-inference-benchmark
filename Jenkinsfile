@@ -159,7 +159,8 @@ docker exec ${containerName} bash -c \\
 echo "=== 第 ${i} 轮测试完成 ==="
 ENDSSH
 """
-                                } else if (datasetType == 'speed_bench') {
+} else if (datasetType == 'speed_bench') {
+                                    def outputLenArg = params.SPEED_BENCH_OUTPUT_LEN?.trim() ? "--speed-bench-output-len ${params.SPEED_BENCH_OUTPUT_LEN}" : ""
                                     bashCmd = """
 ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 echo "=== 执行第 ${i}/${round} 轮测试 (RUN_ID: ${currentRunId}) ==="
@@ -175,8 +176,8 @@ docker exec ${containerName} bash -c \\
         --model-path ${params.MODEL_PATH} \\
         --dataset-level ${params.SUBSET} \
         --dataset-path ${params.SPEED_BENCH_DATASET_PATH} \
-        --speed-bench-output-len ${params.SPEED_BENCH_OUTPUT_LEN} \
-        --run-id ${currentRunId} \
+        ${outputLenArg} \\
+        --run-id ${currentRunId} \\
         --build-number ${BUILD_NUMBER} \\
         --tester ${params.TESTER}"
 echo "=== 第 ${i} 轮测试完成 ==="
