@@ -25,6 +25,7 @@ def run_benchmark(
     build_number=None,
     tester=None,
     dataset_path=None,
+    speed_bench_output_len=None,
 ):
     print(f"Infra: {infra}")
     print(f"Model Name: {served_model_name}")
@@ -40,7 +41,20 @@ def run_benchmark(
 
     dataset_name = test_config.get("dataset-name", "speed_bench")
     dataset_path = dataset_path or test_config.get("dataset-path", "")
-    output_len = test_config.get("speed-bench-output-len", 1024)
+    output_len = None
+    if speed_bench_output_len is not None and speed_bench_output_len != "":
+        try:
+            output_len = int(speed_bench_output_len)
+        except (ValueError, TypeError):
+            print(
+                f"Error: speed_bench_output_len must be a positive integer, got: '{speed_bench_output_len}'"
+            )
+            return
+        if output_len <= 0:
+            print(
+                f"Error: speed_bench_output_len must be a positive integer, got: {output_len}"
+            )
+            return
     temperature = test_config.get("temperature", 0.7)
     seed = test_config.get("seed", 123)
     ready_timeout = test_config.get("ready-check-timeout-sec", 30)
@@ -91,19 +105,23 @@ def run_benchmark(
                     str(np),
                     "--max-concurrency",
                     str(nc),
-                    "--speed-bench-output-len",
-                    str(output_len),
-                    "--temperature",
-                    str(temperature),
-                    "--seed",
-                    str(seed),
-                    "--metric_percentiles",
-                    "95,99",
-                    "--served-model-name",
-                    str(served_model_name),
-                    "--ready-check-timeout-sec",
-                    str(ready_timeout),
                 ]
+                if output_len is not None:
+                    cmd.extend(["--speed-bench-output-len", str(output_len)])
+                cmd.extend(
+                    [
+                        "--temperature",
+                        str(temperature),
+                        "--seed",
+                        str(seed),
+                        "--metric_percentiles",
+                        "95,99",
+                        "--served-model-name",
+                        str(served_model_name),
+                        "--ready-check-timeout-sec",
+                        str(ready_timeout),
+                    ]
+                )
 
                 print(f"Running: {' '.join(cmd)}")
                 print(f"Log file: {log_file}")
@@ -178,6 +196,12 @@ def main():
         default=None,
         help="Speed bench dataset path (falls back to config file if not provided)",
     )
+    parser.add_argument(
+        "--speed-bench-output-len",
+        type=str,
+        default=None,
+        help="Speed bench output length (empty=not specified, must be positive integer if provided)",
+    )
     args = parser.parse_args()
 
     config_path = os.path.join(
@@ -198,6 +222,7 @@ def main():
         build_number=args.build_number,
         tester=args.tester,
         dataset_path=args.dataset_path,
+        speed_bench_output_len=args.speed_bench_output_len,
     )
 
 

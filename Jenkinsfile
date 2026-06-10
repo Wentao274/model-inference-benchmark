@@ -11,6 +11,7 @@ pipeline {
         choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型')
         choice(name: 'SUBSET', choices: ['1k', '2k', '8k', '16k', '32k'], description: 'Speed Bench子集(仅speed_bench时使用)')
         string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data1/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径(仅speed_bench时使用)')
+        string(name: 'SPEED_BENCH_OUTPUT_LEN', defaultValue: '', description: 'Speed Bench输出长度(仅供speed_bench数据集测试时使用，留空则不指定该参数)')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（仅random数据集使用，可选: test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
@@ -174,6 +175,7 @@ docker exec ${containerName} bash -c \\
         --model-path ${params.MODEL_PATH} \\
         --dataset-level ${params.SUBSET} \
         --dataset-path ${params.SPEED_BENCH_DATASET_PATH} \
+        --speed-bench-output-len ${params.SPEED_BENCH_OUTPUT_LEN} \
         --run-id ${currentRunId} \
         --build-number ${BUILD_NUMBER} \\
         --tester ${params.TESTER}"
