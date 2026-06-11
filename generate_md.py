@@ -439,17 +439,16 @@ def generate_md_report(
     md_lines.append(title)
 
     md_lines.append("")
-    if dataset_type == "speed_bench":
-        md_lines.append(f"## Dataset")
-        md_lines.append(f"speed_bench_{subset}")
-    else:
-        md_lines.append(f"## Dataset")
-        md_lines.append(f"random")
-
-    md_lines.append("")
     md_lines.append("## Env")
     for env_line in env.strip().split("\n"):
         md_lines.append(f"- {env_line}")
+
+    md_lines.append("")
+    md_lines.append("## Dataset")
+    if dataset_type == "speed_bench":
+        md_lines.append(f"speed_bench_{subset}")
+    else:
+        md_lines.append(f"random")
 
     md_lines.append("")
     md_lines.append("## Script")
