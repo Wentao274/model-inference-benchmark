@@ -412,15 +412,16 @@ find ./${buildsDir} -name '*.md' | wc -l
     <table>
         <tr><th>项目</th><td>值</td></tr>
         <tr><td>构建编号</td><td>#${BUILD_NUMBER}</td></tr>
-        <tr><td>推理框架</td><td>${infra}</td></tr>
+        <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>芯片平台</td><td>${params.CHIP}</td></tr>
+        <tr><td>推理框架</td><td>${infra}</td></tr>
         <tr><td>模型名称</td><td>${params.MODEL}</td></tr>
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
+        <tr><td>PD分离模式</td><td>${params.PD}</td></tr>
         <tr><td>数据集类型</td><td>${params.DATASET_TYPE}</td></tr>
         ${datasetInfoRow}
         <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
-        <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>随机范围比例</td><td>${params.RANDOM_RANGE_RATIO}</td></tr>
         <tr><td>执行时间</td><td>${currentBuild.durationString}</td></tr>
         <tr><td>测试状态</td><td>${testStatus}</td></tr>
