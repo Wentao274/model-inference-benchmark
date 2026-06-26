@@ -31,7 +31,52 @@ vllm v0.21.0''', description: '测试环境信息')
     }
 
     stages {
+        stage('API 连通性预检') {
+            steps {
+                sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
+                    script {
+                        try {
+                            sh """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+set -o pipefail
+{
+    echo "=== 检查 API 连通性 (/v1/models) ==="
+    HTTP_CODE=\$(curl -s --connect-timeout 10 -m 30 -o /dev/null -w "%{http_code}" ${params.BASE_URL}/v1/models)
+    if [ "\${HTTP_CODE}" != "200" ]; then
+        echo "ERROR: API 连通性检查失败, HTTP状态码: \${HTTP_CODE}, URL: ${params.BASE_URL}/v1/models"
+        exit 1
+    fi
+    echo "API /v1/models 连通性检查通过, HTTP状态码: \${HTTP_CODE}"
+
+    echo "=== 检查 Chat Completions 接口 ==="
+    CHAT_RESP=\$(curl -s --connect-timeout 10 -m 60 -w "\\n%{http_code}" \\
+        -H "Content-Type: application/json" \\
+        -d '{"model":"${params.MODEL}","messages":[{"role":"user","content":"hello"}],"max_tokens":10}' \\
+        ${params.BASE_URL}/v1/chat/completions)
+    CHAT_HTTP_CODE=\$(echo "\${CHAT_RESP}" | tail -1)
+    if [ "\${CHAT_HTTP_CODE}" != "200" ]; then
+        echo "ERROR: Chat Completions 接口检查失败, HTTP状态码: \${CHAT_HTTP_CODE}"
+        echo "响应内容: \$(echo "\${CHAT_RESP}" | head -n -1)"
+        exit 1
+    fi
+    echo "Chat Completions 接口检查通过, HTTP状态码: \${CHAT_HTTP_CODE}"
+} 2>&1 | tee /tmp/connectivity_${BUILD_NUMBER}.log
+ENDSSH
+"""
+                        } catch (Exception e) {
+                            env.CONNECTIVITY_FAILED = 'true'
+                            currentBuild.result = 'UNSTABLE'
+                            println("=== API 连通性预检失败,后续阶段(环境检查、启动容器并运行 Benchmark)将跳过 ===")
+                        }
+                    }
+                }
+            }
+        }
+
         stage('环境检查') {
+            when {
+                expression { env.CONNECTIVITY_FAILED != 'true' }
+            }
             steps {
                 sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
                     script {
@@ -74,6 +119,9 @@ ENDSSH
         }
 
 stage('启动容器并运行 Benchmark') {
+            when {
+                expression { env.CONNECTIVITY_FAILED != 'true' }
+            }
             steps {
                 script {
                     def infra = params.INFRA.toLowerCase()
@@ -332,6 +380,11 @@ mkdir -p builds
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/${buildsDir}/ ./builds/
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${REMOTE_USER}@${REMOTE_HOST}:${params.WORK_DIR}/import_benchmark.py ./import_benchmark.py
 
+echo "=== 拉取连通性预检日志 ==="
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${REMOTE_USER}@${REMOTE_HOST}:/tmp/connectivity_${BUILD_NUMBER}.log ./builds/connectivity_${BUILD_NUMBER}.log 2>/dev/null \
+    && echo "连通性预检日志已拉取" \
+    || echo "WARN: 连通性预检日志拉取失败(可能未执行预检)"
+
 echo "=== 拉取完成，查看目录结构 ==="
 find ./${buildsDir} -maxdepth 3 -type d
 echo "=== 日志文件数量 ==="
@@ -359,7 +412,33 @@ find ./${buildsDir} -name '*.md' | wc -l
                         def mdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
                         def reportHtml = ""
                         def testStatus = "成功"
-                        
+
+                        def connectivityLogFile = "builds/connectivity_${BUILD_NUMBER}.log"
+                        def connectivityLogContent = fileExists(connectivityLogFile) ? readFile(connectivityLogFile) : ""
+                        def failureReason = ""
+                        def connectivityFailureReason = ""
+                        if (connectivityLogContent.contains("API 连通性检查失败") ||
+                            connectivityLogContent.contains("Chat Completions 接口检查失败")) {
+                            failureReason = "连通性检查未通过"
+                            println("DEBUG: 识别到连通性检查失败, 失败原因: ${failureReason}")
+                            def logLines = connectivityLogContent.split('\n')
+                            def collected = []
+                            def inFailureSection = false
+                            for (def ll : logLines) {
+                                if (ll.contains("检查 API 连通性") || ll.contains("Chat Completions 接口检查")) {
+                                    inFailureSection = true
+                                }
+                                if (inFailureSection) {
+                                    if (!collected.isEmpty() && ll.trim().startsWith("===") &&
+                                        !ll.contains("检查 API 连通性") && !ll.contains("Chat Completions 接口检查")) {
+                                        break
+                                    }
+                                    collected.add(ll)
+                                }
+                            }
+                            connectivityFailureReason = collected.join('\n').trim()
+                        }
+
                         if (mdFiles && mdFiles.length > 0) {
                             for (def mdFile : mdFiles) {
                                 def mdContent = readFile(mdFile.path)
@@ -382,6 +461,24 @@ find ./${buildsDir} -name '*.md' | wc -l
                             reportHtml = '<p>无报告文件</p>'
                             testStatus = "失败/无结果"
                         }
+                        if (failureReason) {
+                            testStatus = failureReason
+                        }
+
+                        def connectivityFailureHtml = ""
+                        if (failureReason) {
+                            def escapedReason = connectivityFailureReason
+                                .replace('&', '&amp;')
+                                .replace('<', '&lt;')
+                                .replace('>', '&gt;')
+                                .replace('\n', '<br/>')
+                            connectivityFailureHtml = """
+    <div style="background-color: #ffebee; color: #000000; border-left: 4px solid #d32f2f; padding: 12px 15px; margin-top: 15px; border-radius: 3px;">
+        <h3 style="color: #d32f2f; margin-top: 0; margin-bottom: 8px;">连通性检查未通过</h3>
+        <p style="margin-top: 0; margin-bottom: 8px; color: #000000;">本次构建测试状态失败，原因是 API 连通性检查失败，详情如下：</p>
+        <pre style="background-color: #ffffff; color: #000000; padding: 10px; border-radius: 3px; overflow-x: auto; white-space: pre-wrap; margin: 0; font-family: Menlo, Consolas, monospace; font-size: 12px;">${escapedReason}</pre>
+    </div>"""
+                        }
 
                         def emailBody = """
 <html>
@@ -390,7 +487,7 @@ find ./${buildsDir} -name '*.md' | wc -l
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
         .container { max-width: 1000px; margin: 0 auto; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .header { background-color: ${testStatus == '成功' ? '#2196F3' : '#f44336'}; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
+        .header { background-color: ${(!failureReason && testStatus == '成功') ? '#2196F3' : '#f44336'}; color: white; padding: 20px; border-radius: 5px 5px 0 0; }
         .content { padding: 20px; }
         table { border-collapse: collapse; width: 100%; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
@@ -425,7 +522,10 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>随机范围比例</td><td>${params.RANDOM_RANGE_RATIO}</td></tr>
         <tr><td>执行时间</td><td>${currentBuild.durationString}</td></tr>
         <tr><td>测试状态</td><td>${testStatus}</td></tr>
+        <tr><td>构建状态</td><td>${currentBuild.currentResult}</td></tr>
     </table>
+
+    ${connectivityFailureHtml}
 
     <h3>测试报告内容</h3>
     ${reportHtml}
@@ -444,12 +544,16 @@ find ./${buildsDir} -name '*.md' | wc -l
                         println("报告数量: ${mdFiles ? mdFiles.length : 0}")
                         println("测试状态: ${testStatus}")
 
+                        def attachmentPattern = failureReason ?
+                            "builds/connectivity_${BUILD_NUMBER}.log" :
+                            "builds/${BUILD_NUMBER}/dashboard/**/*.md"
+
                         emailext(
                             subject: "[模型推理 - Benchmark测试报告] #${BUILD_NUMBER} ${params.CHIP} - ${params.MODEL} - ${round}轮测试 (${infra})",
                             body: emailBody,
                             to: "${params.RECIPIENTS}",
                             mimeType: 'text/html',
-                            attachmentsPattern: "builds/${BUILD_NUMBER}/dashboard/**/*.md"
+                            attachmentsPattern: attachmentPattern
                         )
                     }
                 }
@@ -505,7 +609,7 @@ ENDSSH
     post {
         always {
             script {
-                archiveArtifacts artifacts: "builds/${BUILD_NUMBER}/**", allowEmptyArchive: true, fingerprint: true
+                archiveArtifacts artifacts: "builds/${BUILD_NUMBER}/**, builds/connectivity_${BUILD_NUMBER}.log", allowEmptyArchive: true, fingerprint: true
                 println("构建完成: ${currentBuild.currentResult}")
             }
         }
