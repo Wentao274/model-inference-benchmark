@@ -57,7 +57,7 @@ def build_title_suffix(serve_cmd):
     return "".join(suffix_parts)
 
 
-def parse_benchmark_log(log_file, infra="sglang"):
+def parse_benchmark_log(log_file, engine="sglang"):
     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
 
@@ -65,7 +65,7 @@ def parse_benchmark_log(log_file, infra="sglang"):
     metrics = {}
 
     section = None
-    if infra == "sglang":
+    if engine == "sglang":
         section_patterns = {
             "Serving": "=========== Serving Benchmark Result",
             "E2E Latency": "----------------End-to-End Latency",
@@ -180,7 +180,7 @@ def get_all_concurrencies(base_path, run_id):
     return sorted(concurrency_set, key=lambda x: int(x))
 
 
-def get_chip_metrics(base_path, run_id, concurrency, infra):
+def get_chip_metrics(base_path, run_id, concurrency, engine):
     full_path = os.path.join(base_path, run_id)
 
     if not os.path.exists(full_path):
@@ -193,12 +193,12 @@ def get_chip_metrics(base_path, run_id, concurrency, infra):
             if item.startswith(f"{concurrency}-"):
                 log_files = glob.glob(os.path.join(item_path, "*.log"))
                 if log_files:
-                    return parse_benchmark_log(log_files[0], infra)
+                    return parse_benchmark_log(log_files[0], engine)
 
     return None
 
 
-def get_chip_metrics_speed_bench(base_path, round_id, concurrency, num_prompts, infra):
+def get_chip_metrics_speed_bench(base_path, round_id, concurrency, num_prompts, engine):
     full_path = os.path.join(base_path, round_id)
 
     if not os.path.exists(full_path):
@@ -211,13 +211,13 @@ def get_chip_metrics_speed_bench(base_path, round_id, concurrency, num_prompts, 
     if os.path.isdir(target_path):
         log_files = glob.glob(os.path.join(target_path, "*.log"))
         if log_files:
-            return parse_benchmark_log(log_files[0], infra)
+            return parse_benchmark_log(log_files[0], engine)
 
     return None
 
 
 def generate_benchmark_command(
-    infra,
+    engine,
     model_name,
     model_path,
     test_suite,
@@ -237,7 +237,7 @@ def generate_benchmark_command(
         ready_timeout = test_config.get("ready-check-timeout-sec", 30)
         num_prompts = test_config.get("num-prompts", [200])[0]
 
-        if infra == "vllm":
+        if engine == "vllm":
             cmd_parts = [
                 "vllm bench serve",
                 "  --backend openai-chat",
@@ -258,7 +258,7 @@ def generate_benchmark_command(
                 f"  --ready-check-timeout-sec {ready_timeout}",
             ]
         else:
-            cmd_parts = [f"# speed_bench not supported for {infra}"]
+            cmd_parts = [f"# speed_bench not supported for {engine}"]
     else:
         test_suites = load_test_suites()
         suite_config = (
@@ -281,7 +281,7 @@ def generate_benchmark_command(
             "ready-check-timeout-sec", 30
         )
 
-        if infra == "vllm":
+        if engine == "vllm":
             cmd_parts = [
                 "vllm bench serve",
                 "  --backend openai-chat",
@@ -320,8 +320,8 @@ def generate_benchmark_command(
     return "\n".join(cmd_parts)
 
 
-def format_metrics_for_md(metrics, infra):
-    if infra == "sglang":
+def format_metrics_for_md(metrics, engine):
+    if engine == "sglang":
         metric_keys = [
             ("Backend", "Backend"),
             ("Traffic request rate", "Traffic request rate"),
@@ -395,7 +395,7 @@ def format_metrics_for_md(metrics, infra):
 
 
 def generate_md_report(
-    infra,
+    engine,
     chip_name,
     model_name,
     test_suite,
@@ -429,11 +429,11 @@ def generate_md_report(
 
     title_suffix = build_title_suffix(serve)
     if dataset_type == "speed_bench":
-        title = f"# {model_name}-{infra}-{pd}-{subset}"
+        title = f"# {model_name}-{engine}-{pd}-{subset}"
     elif title_suffix:
-        title = f"# {model_name}-{infra}-{pd}-{title_suffix}"
+        title = f"# {model_name}-{engine}-{pd}-{title_suffix}"
     else:
-        title = f"# {model_name}-{infra}-{pd}"
+        title = f"# {model_name}-{engine}-{pd}"
 
     md_lines = []
     md_lines.append(title)
@@ -461,7 +461,7 @@ def generate_md_report(
     md_lines.append("### Bench")
     first_conc = concurrencies[0] if concurrencies else "10"
     bench_cmd = generate_benchmark_command(
-        infra,
+        engine,
         model_name,
         "${MODEL_PATH}",
         test_suite,
@@ -489,12 +489,12 @@ def generate_md_report(
                     run_id = f"{i + 1:02d}"
                     for num_prompts in prompts_list:
                         metrics = get_chip_metrics_speed_bench(
-                            base_path, run_id, conc, num_prompts, infra
+                            base_path, run_id, conc, num_prompts, engine
                         )
                         if metrics and (
                             metrics.get("Backend") or metrics.get("Successful requests")
                         ):
-                            formatted = format_metrics_for_md(metrics, infra)
+                            formatted = format_metrics_for_md(metrics, engine)
                             md_lines.append(formatted)
                         else:
                             md_lines.append("pass")
@@ -513,11 +513,11 @@ def generate_md_report(
 
                 if i < round_count:
                     run_id = f"{i + 1:02d}"
-                    metrics = get_chip_metrics(base_path, run_id, conc, infra)
+                    metrics = get_chip_metrics(base_path, run_id, conc, engine)
                     if metrics and (
                         metrics.get("Backend") or metrics.get("Successful requests")
                     ):
-                        formatted = format_metrics_for_md(metrics, infra)
+                        formatted = format_metrics_for_md(metrics, engine)
                         md_lines.append(formatted)
                     else:
                         md_lines.append("pass")
@@ -540,11 +540,11 @@ def main():
         description="Generate benchmark upload markdown report"
     )
     parser.add_argument(
-        "--infra",
+        "--engine",
         type=str,
         required=True,
         choices=["vllm", "sglang"],
-        help="Infrastructure: vllm or sglang",
+        help="Inference engine: vllm or sglang",
     )
     parser.add_argument(
         "--chip",
@@ -675,45 +675,45 @@ def main():
             print("Error: --subset is required when dataset-type is speed_bench")
             return
         if args.tester and args.build_number:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/build-{args.build_number}/{args.engine}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         elif args.tester:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.tester}/{args.engine}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         elif args.build_number:
-            base_path = f"{reports_dir}/reports-speed_bench/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/build-{args.build_number}/{args.engine}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
         else:
-            base_path = f"{reports_dir}/reports-speed_bench/{args.infra}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
+            base_path = f"{reports_dir}/reports-speed_bench/{args.engine}/benchmark/{args.chip}/{args.model}/throughput_{subset}"
     else:
         if args.tester and args.build_number:
-            base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+            base_path = f"{reports_dir}/reports/{args.tester}/build-{args.build_number}/{args.engine}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
         elif args.tester:
-            base_path = f"{reports_dir}/reports/{args.tester}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+            base_path = f"{reports_dir}/reports/{args.tester}/{args.engine}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
         elif args.build_number:
-            base_path = f"{reports_dir}/reports/build-{args.build_number}/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+            base_path = f"{reports_dir}/reports/build-{args.build_number}/{args.engine}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
         else:
-            base_path = f"{reports_dir}/reports/{args.infra}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
+            base_path = f"{reports_dir}/reports/{args.engine}/benchmark/{args.chip}/{args.model}/{args.test_suite}"
 
     output_file = args.output
     if output_file is None:
         curdate = datetime.now().strftime("%Y-%m-%d")
         title_suffix = build_title_suffix(serve_value)
         if dataset_type == "speed_bench":
-            file_name = f"{args.model}-{args.infra}-{args.pd}-{args.subset}.md"
+            file_name = f"{args.model}-{args.engine}-{args.pd}-{args.subset}.md"
         elif title_suffix:
-            file_name = f"{args.model}-{args.infra}-{args.pd}-{title_suffix}.md"
+            file_name = f"{args.model}-{args.engine}-{args.pd}-{title_suffix}.md"
         else:
-            file_name = f"{args.model}-{args.infra}-{args.pd}.md"
+            file_name = f"{args.model}-{args.engine}-{args.pd}.md"
 
         if dataset_type == "speed_bench":
-            dashboard_dir = f"dashboard/{args.tester}/{args.infra}/{args.chip}/{args.model}/speed_bench/{args.subset}/{curdate}"
+            dashboard_dir = f"dashboard/{args.tester}/{args.engine}/{args.chip}/{args.model}/speed_bench/{args.subset}/{curdate}"
         else:
-            dashboard_dir = f"dashboard/{args.tester}/{args.infra}/{args.chip}/{args.model}/{args.test_suite}/{curdate}"
+            dashboard_dir = f"dashboard/{args.tester}/{args.engine}/{args.chip}/{args.model}/{args.test_suite}/{curdate}"
         Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
         output_file = f"{dashboard_dir}/{file_name}"
 
     print(f"\n{'=' * 60}")
     print(f"Generate Markdown Report Configuration")
     print(f"{'=' * 60}")
-    print(f"Infra: {args.infra}")
+    print(f"Engine: {args.engine}")
     print(f"Chip: {args.chip}")
     print(f"Model: {args.model}")
     print(f"Test Suite: {args.test_suite}")
@@ -727,7 +727,7 @@ def main():
     print(f"{'=' * 60}\n")
 
     generated_file = generate_md_report(
-        infra=args.infra,
+        engine=args.engine,
         chip_name=args.chip,
         model_name=args.model,
         test_suite=args.test_suite,

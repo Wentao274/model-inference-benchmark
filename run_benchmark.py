@@ -17,7 +17,7 @@ def load_test_suites(config_path):
 
 
 def run_benchmark(
-    infra,
+    engine,
     chip_name,
     base_url,
     served_model_name,
@@ -29,7 +29,7 @@ def run_benchmark(
     build_number=None,
     tester=None,
 ):
-    print(f"Infra: {infra}")
+    print(f"Engine: {engine}")
     print(f"Model Name: {served_model_name}")
     print(f"Model Path: {model_path}")
     print(f"Running test suites: {', '.join(test_suites)}")
@@ -40,15 +40,15 @@ def run_benchmark(
     if random_range_ratio is None:
         random_range_ratio = test_config.get("random-range-ratio", 0.3)
 
-    output_base = f"reports/{infra}/benchmark/{chip_name}/{served_model_name}"
+    output_base = f"reports/{engine}/benchmark/{chip_name}/{served_model_name}"
     if tester and build_number:
-        output_base = f"reports/{tester}/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}"
+        output_base = f"reports/{tester}/build-{build_number}/{engine}/benchmark/{chip_name}/{served_model_name}"
     elif tester:
         output_base = (
-            f"reports/{tester}/{infra}/benchmark/{chip_name}/{served_model_name}"
+            f"reports/{tester}/{engine}/benchmark/{chip_name}/{served_model_name}"
         )
     elif build_number:
-        output_base = f"reports/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}"
+        output_base = f"reports/build-{build_number}/{engine}/benchmark/{chip_name}/{served_model_name}"
 
     params_config = test_config.get("suites", {})
 
@@ -85,7 +85,7 @@ def run_benchmark(
                 output_dir, f"bench-{test_suite}-{nc}-{np}-i{ni}-o{no}.log"
             )
 
-            if infra == "vllm":
+            if engine == "vllm":
                 cmd = [
                     "vllm",
                     "bench",
@@ -122,7 +122,7 @@ def run_benchmark(
                     "--ready-check-timeout-sec",
                     str(ready_timeout),
                 ]
-            elif infra == "sglang":
+            elif engine == "sglang":
                 cmd = [
                     "python3",
                     "-m",
@@ -155,7 +155,7 @@ def run_benchmark(
                 )
                 cmd.extend(["--output-file", output_file])
             else:
-                raise ValueError(f"Unknown infra: {infra}")
+                raise ValueError(f"Unknown engine: {engine}")
 
             print(f"Running: {' '.join(cmd)}")
             print(f"Log file: {log_file}")
@@ -181,11 +181,11 @@ def main():
 
     parser = argparse.ArgumentParser(description="Run inference benchmark")
     parser.add_argument(
-        "--infra",
+        "--engine",
         type=str,
         required=True,
         choices=["vllm", "sglang"],
-        help="Infrastructure: vllm or sglang",
+        help="Inference engine: vllm or sglang",
     )
     parser.add_argument(
         "--base-url", type=str, required=True, help="Base URL for the benchmark server"
@@ -249,7 +249,7 @@ def main():
         return
 
     run_benchmark(
-        infra=args.infra,
+        engine=args.engine,
         chip_name=args.chip,
         base_url=args.base_url,
         served_model_name=args.model,

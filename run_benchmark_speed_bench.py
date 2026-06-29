@@ -14,7 +14,7 @@ def load_test_suites(config_path):
 
 
 def run_benchmark(
-    infra,
+    engine,
     chip_name,
     base_url,
     served_model_name,
@@ -27,7 +27,7 @@ def run_benchmark(
     dataset_path=None,
     speed_bench_output_len=None,
 ):
-    print(f"Infra: {infra}")
+    print(f"Engine: {engine}")
     print(f"Model Name: {served_model_name}")
     print(f"Model Path: {model_path}")
     print(f"Dataset Level: {dataset_level}")
@@ -62,15 +62,15 @@ def run_benchmark(
     max_concurrency_list = test_config.get("max-concurrency") or [10, 30, 60]
 
     subset = f"throughput_{dataset_level}"
-    output_base = f"reports-speed_bench/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
+    output_base = f"reports-speed_bench/{engine}/benchmark/{chip_name}/{served_model_name}/{subset}"
     if tester and build_number:
-        output_base = f"reports-speed_bench/{tester}/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
+        output_base = f"reports-speed_bench/{tester}/build-{build_number}/{engine}/benchmark/{chip_name}/{served_model_name}/{subset}"
     elif tester:
-        output_base = f"reports-speed_bench/{tester}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
+        output_base = f"reports-speed_bench/{tester}/{engine}/benchmark/{chip_name}/{served_model_name}/{subset}"
     elif build_number:
-        output_base = f"reports-speed_bench/build-{build_number}/{infra}/benchmark/{chip_name}/{served_model_name}/{subset}"
+        output_base = f"reports-speed_bench/build-{build_number}/{engine}/benchmark/{chip_name}/{served_model_name}/{subset}"
 
-    if infra == "vllm":
+    if engine == "vllm":
         for nc in max_concurrency_list:
             for np in num_prompts_list:
                 param_dir = f"{run_id}/c{nc}-n{np}"
@@ -141,7 +141,7 @@ def run_benchmark(
                 print(f"Completed: {log_file}")
                 time.sleep(60)
     else:
-        raise ValueError(f"Only vllm infra is supported, got: {infra}")
+        raise ValueError(f"Only vllm engine is supported, got: {engine}")
 
 
 def main():
@@ -149,11 +149,11 @@ def main():
 
     parser = argparse.ArgumentParser(description="Run speed_bench inference benchmark")
     parser.add_argument(
-        "--infra",
+        "--engine",
         type=str,
         required=True,
         choices=["vllm", "sglang"],
-        help="Infrastructure: vllm or sglang",
+        help="Inference engine: vllm or sglang",
     )
     parser.add_argument(
         "--base-url", type=str, required=True, help="Base URL for the benchmark server"
@@ -211,7 +211,7 @@ def main():
     test_config = load_test_suites(config_path)
 
     run_benchmark(
-        infra=args.infra,
+        engine=args.engine,
         chip_name=args.chip,
         base_url=args.base_url,
         served_model_name=args.model,

@@ -1,26 +1,26 @@
 pipeline {
     agent any
     parameters {
-        string(name: 'TESTER', defaultValue: 'liwt', description: '测试人员名称')
-        choice(name: 'INFRA', choices: ['vllm', 'sglang'], description: '推理框架')
-        string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
-        choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
-        string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
-        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径 (必填，目前仅支持五区的模型路径，请只修改xxx/llms/后的路径名，前面的不要改动)')
-        string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址，注意没有/v1后缀')
-        choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型')
-        choice(name: 'SUBSET', choices: ['1k', '2k', '8k', '16k', '32k'], description: 'Speed Bench子集(仅speed_bench时使用)')
-        string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data1/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径(仅speed_bench时使用)')
-        string(name: 'SPEED_BENCH_OUTPUT_LEN', defaultValue: '', description: 'Speed Bench输出长度(仅供speed_bench数据集测试时使用，留空则不指定该参数)')
+        string(name: 'TESTER', defaultValue: 'liwt', description: '测试人员名称（必填）')
+        string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称（必填）')
+        choice(name: 'ENGINE', choices: ['vllm', 'sglang'], description: '推理框架（必填）')
+        choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式（agg表示非PD分离，disagg表示PD分离）')
+        string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型服务名称 (必填)')
+        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径，请使用host绝对路径')
+        string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址（必填）')
+        choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型（必填）')
+        choice(name: 'SUBSET', choices: ['1k', '2k', '8k', '16k', '32k'], description: 'Speed Bench子集（仅speed_bench时使用）')
+        string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data1/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径（仅speed_bench时使用）')
+        string(name: 'SPEED_BENCH_OUTPUT_LEN', defaultValue: '', description: 'Speed Bench输出长度（仅供speed_bench数据集测试时使用，留空则不指定该参数）')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（仅random数据集使用，可选: test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
-        text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '邮件接收者（逗号分隔）')
-        text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令')
+        text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
+        text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
         text(name: 'ENV', defaultValue: '''Kimi-K2.6
 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
-vllm v0.21.0''', description: '测试环境信息')
-        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要修改')
+vllm v0.21.0''', description: '测试环境信息（必填）')
+        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
     }
     environment {
         SSH_CREDENTIALS = 'HOST_SSH_KEY'
@@ -90,7 +90,7 @@ pwd
 ls -la
 echo "=== 测试参数信息 ==="
 echo "测试人员: ${params.TESTER}"
-echo "推理框架: ${params.INFRA}"
+echo "推理框架: ${params.ENGINE}"
 echo "数据集类型: ${params.DATASET_TYPE}"
 echo "Subset: ${params.SUBSET}"
 echo "芯片类型: ${params.CHIP}"
@@ -124,15 +124,15 @@ stage('启动容器并运行 Benchmark') {
             }
             steps {
                 script {
-                    def infra = params.INFRA.toLowerCase()
+                    def engine = params.ENGINE.toLowerCase()
                     def datasetType = params.DATASET_TYPE.toLowerCase()
-                    def image = infra == 'vllm' ? env.VLLM_IMAGE : env.SGLANG_IMAGE
+                    def image = engine == 'vllm' ? env.VLLM_IMAGE : env.SGLANG_IMAGE
                     def containerName = "dashboard-model-bench-${params.CHIP}-${params.MODEL}-${BUILD_NUMBER}"
                     def round = params.ROUND.toInteger()
                     def speedBenchDatasetPath = params.SPEED_BENCH_DATASET_PATH
                     env.CONTAINER_NAME = containerName
 
-                    println("=== 启动 ${infra.toUpperCase()} 容器 ===")
+                    println("=== 启动 ${engine.toUpperCase()} 容器 ===")
                     println("镜像: ${image}")
                     println("容器名: ${containerName}")
                     println("测试轮数: ${round}")
@@ -194,7 +194,7 @@ echo "数据集类型: random"
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 docker exec ${containerName} bash -c \\
     "\${PYTHON_CMD} run_benchmark.py \\
-        --infra ${params.INFRA} \\
+        --engine ${params.ENGINE} \\
         --base-url '${params.BASE_URL}' \\
         --chip ${params.CHIP} \\
         --model ${params.MODEL} \\
@@ -217,7 +217,7 @@ echo "Subset: ${params.SUBSET}"
 PYTHON_CMD=\$(docker exec ${containerName} bash -c "command -v python3 || command -v python || echo 'python3'")
 docker exec ${containerName} bash -c \\
     "\${PYTHON_CMD} run_benchmark_speed_bench.py \\
-        --infra ${params.INFRA} \\
+        --engine ${params.ENGINE} \\
         --base-url '${params.BASE_URL}' \\
         --chip ${params.CHIP} \\
         --model ${params.MODEL} \\
@@ -285,7 +285,7 @@ docker cp /tmp/serve_param.txt ${containerName}:/tmp/serve_param.txt
 echo "=== 执行 generate_md.py ==="
 docker exec ${containerName} bash -c \
     "\${PYTHON_CMD} /workspace/bench-dashboard/model-inference-benchmark/generate_md.py \
-        --infra ${params.INFRA} \
+        --engine ${params.ENGINE} \
         --chip ${params.CHIP} \
         --model ${params.MODEL} \
         --test-suite ${params.TEST_SUITE} \
@@ -341,12 +341,12 @@ ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
 set -e
 BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 CURDATE=\$(date +%Y-%m-%d)
-DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/\${CURDATE}"
+DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/\${CURDATE}"
 
 echo "=== 复制 dashboard 目录到 builds 目录 ==="
 if [ -d "\${DASHBOARD_DIR}" ]; then
-    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}"
-    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.INFRA}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/"
+    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}"
+    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/"
     echo "dashboard 目录复制完成: \${DASHBOARD_DIR} -> \${BUILDS_DIR}/dashboard/"
 else
     echo "警告: dashboard 目录不存在: \${DASHBOARD_DIR}"
@@ -402,7 +402,7 @@ find ./${buildsDir} -name '*.md' | wc -l
             steps {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     script {
-                        def infra = params.INFRA.toUpperCase()
+                        def engine = params.ENGINE.toUpperCase()
                         def round = params.ROUND.toInteger()
                         def runIdList = (1..round).collect { String.format('%02d', it) }.join(', ')
                         def buildsDir = "builds/${BUILD_NUMBER}"
@@ -511,7 +511,7 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>构建编号</td><td>#${BUILD_NUMBER}</td></tr>
         <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>芯片平台</td><td>${params.CHIP}</td></tr>
-        <tr><td>推理框架</td><td>${infra}</td></tr>
+        <tr><td>推理框架</td><td>${engine}</td></tr>
         <tr><td>模型名称</td><td>${params.MODEL}</td></tr>
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
@@ -549,7 +549,7 @@ find ./${buildsDir} -name '*.md' | wc -l
                             "builds/${BUILD_NUMBER}/dashboard/**/*.md"
 
                         emailext(
-                            subject: "[模型推理 - Benchmark测试报告] #${BUILD_NUMBER} ${params.CHIP} - ${params.MODEL} - ${round}轮测试 (${infra})",
+                            subject: "[模型推理 - Benchmark测试报告] #${BUILD_NUMBER} ${params.CHIP} - ${params.MODEL} - ${round}轮测试 (${engine})",
                             body: emailBody,
                             to: "${params.RECIPIENTS}",
                             mimeType: 'text/html',

@@ -42,7 +42,7 @@ def load_deployment_config(config_path="config/model_deployment.yaml"):
     return {}
 
 
-def parse_benchmark_log(log_file, infra="vllm"):
+def parse_benchmark_log(log_file, engine="vllm"):
     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
 
@@ -78,7 +78,7 @@ def parse_benchmark_log(log_file, infra="vllm"):
             if match:
                 key = match.group(1).strip()
                 value = match.group(2).strip()
-                if infra == "sglang":
+                if engine == "sglang":
                     full_key = f"[{section}] {key}"
                     metrics[full_key] = value
                 metrics[key] = value
@@ -192,7 +192,7 @@ def calculate_diff(val1, val2):
         return None, None
 
 
-def generate_benchmark_command(infra, model_name, test_suite):
+def generate_benchmark_command(engine, model_name, test_suite):
     test_suites = load_test_suites()
     suite_config = (
         test_suites.get("test-config", {}).get("suites", {}).get(test_suite, {})
@@ -218,7 +218,7 @@ def generate_benchmark_command(infra, model_name, test_suite):
         "ready-check-timeout-sec", 30
     )
 
-    if infra == "vllm":
+    if engine == "vllm":
         cmd_parts = [
             "vllm bench serve",
             "  --backend openai-chat",
@@ -267,7 +267,7 @@ def format_diff(diff, pct):
 
 
 def generate_single_report(
-    infra,
+    engine,
     chip_name,
     model_name,
     test_suite,
@@ -289,9 +289,9 @@ def generate_single_report(
                 normalized_metrics[key.lower()] = value
             chip_data[chip_name][conc] = normalized_metrics
 
-    generate_single_csv(chip_data, concurrencies, output_dir, chip_name, infra)
+    generate_single_csv(chip_data, concurrencies, output_dir, chip_name, engine)
     generate_single_charts(
-        chip_data, concurrencies, output_dir, chip_name, model_name, infra
+        chip_data, concurrencies, output_dir, chip_name, model_name, engine
     )
     generate_single_markdown(
         chip_data,
@@ -300,14 +300,14 @@ def generate_single_report(
         chip_name,
         model_name,
         test_suite,
-        infra,
+        engine,
         input_lens,
         output_lens,
     )
 
 
 def generate_comparison_report(
-    infra,
+    engine,
     chip_name,
     model_name,
     test_suite,
@@ -336,10 +336,10 @@ def generate_comparison_report(
                 runid_data[run_id][chip_name][conc] = normalized_metrics
 
     generate_comparison_csv(
-        runid_data, concurrencies, output_dir, chip_name, run_ids, infra
+        runid_data, concurrencies, output_dir, chip_name, run_ids, engine
     )
     generate_comparison_charts(
-        runid_data, concurrencies, output_dir, chip_name, model_name, run_ids, infra
+        runid_data, concurrencies, output_dir, chip_name, model_name, run_ids, engine
     )
     generate_comparison_markdown(
         runid_data,
@@ -349,14 +349,14 @@ def generate_comparison_report(
         model_name,
         test_suite,
         run_ids,
-        infra,
+        engine,
         input_lens,
         output_lens,
     )
 
 
-def generate_single_csv(chip_data, concurrencies, output_dir, chip_name, infra):
-    if infra == "vllm":
+def generate_single_csv(chip_data, concurrencies, output_dir, chip_name, engine):
+    if engine == "vllm":
         metric_names = [
             ("[Serving Benchmark Result]", ""),
             ("successful requests", "successful requests"),
@@ -416,7 +416,7 @@ def generate_single_csv(chip_data, concurrencies, output_dir, chip_name, infra):
 
 
 def generate_single_charts(
-    chip_data, concurrencies, output_dir, chip_name, model_name, infra
+    chip_data, concurrencies, output_dir, chip_name, model_name, engine
 ):
     if not HAS_MATPLOTLIB:
         return
@@ -435,7 +435,7 @@ def generate_single_charts(
 
     colors = ["#0066ff", "#00cc66", "#ff3366", "#ff9900", "#9933ff"]
 
-    if infra == "vllm":
+    if engine == "vllm":
         metrics = [
             (
                 "Request Throughput (req/s)",
@@ -552,7 +552,7 @@ def generate_single_markdown(
     chip_name,
     model_name,
     test_suite,
-    infra,
+    engine,
     input_lens=None,
     output_lens=None,
 ):
@@ -563,8 +563,8 @@ def generate_single_markdown(
 
     current_date = datetime.now().strftime("%Y-%m-%d")
 
-    framework_name = "vLLM" if infra == "vllm" else "SGLang"
-    metric_suffix = "" if infra == "vllm" else " (E2E)"
+    framework_name = "vLLM" if engine == "vllm" else "SGLang"
+    metric_suffix = "" if engine == "vllm" else " (E2E)"
 
     def get_value(conc, key):
         return chip_data.get(chip_name, {}).get(conc, {}).get(key, "N/A")
@@ -572,7 +572,7 @@ def generate_single_markdown(
     header = " | ".join([f"{conc} 并发" for conc in concurrencies])
     separator = "----------- | " + " | ".join(["-----------"] * len(concurrencies))
 
-    if infra == "vllm":
+    if engine == "vllm":
         serving_metrics = [
             ("成功请求数", "successful requests"),
             ("失败请求数", "failed requests"),
@@ -669,7 +669,7 @@ def generate_single_markdown(
 {make_table(tpot_metrics)}
 """
 
-    if infra == "sglang":
+    if engine == "sglang":
         md_content += f"""
 ## 端到端延迟 (E2E)
 
@@ -682,7 +682,7 @@ def generate_single_markdown(
 ## Benchmark 执行命令
 
 ```bash
-{generate_benchmark_command(infra, model_name, test_suite)}
+{generate_benchmark_command(engine, model_name, test_suite)}
 ```
 
 ---
@@ -699,9 +699,9 @@ def generate_single_markdown(
 
 
 def generate_comparison_csv(
-    runid_data, concurrencies, output_dir, chip_name, run_ids, infra
+    runid_data, concurrencies, output_dir, chip_name, run_ids, engine
 ):
-    if infra == "vllm":
+    if engine == "vllm":
         metric_names = [
             ("[Serving Benchmark Result]", ""),
             ("successful requests", "successful requests"),
@@ -779,7 +779,7 @@ def generate_comparison_csv(
 
 
 def generate_comparison_charts(
-    runid_data, concurrencies, output_dir, chip_name, model_name, run_ids, infra
+    runid_data, concurrencies, output_dir, chip_name, model_name, run_ids, engine
 ):
     if not HAS_MATPLOTLIB:
         return
@@ -788,7 +788,7 @@ def generate_comparison_charts(
     colors = ["#0066ff", "#00cc66", "#ff3366", "#ff9900", "#9933ff"]
     markers = ["o", "s", "^", "D", "v"]
 
-    if infra == "vllm":
+    if engine == "vllm":
         metrics = [
             ("Request Throughput (req/s)", "request throughput (req/s)", "req/s"),
             (
@@ -995,7 +995,7 @@ def generate_comparison_markdown(
     model_name,
     test_suite,
     run_ids,
-    infra,
+    engine,
     input_lens=None,
     output_lens=None,
 ):
@@ -1005,12 +1005,12 @@ def generate_comparison_markdown(
         output_lens = []
 
     current_date = datetime.now().strftime("%Y-%m-%d")
-    framework_name = "vLLM" if infra == "vllm" else "SGLang"
+    framework_name = "vLLM" if engine == "vllm" else "SGLang"
 
     input_ctx_str = ", ".join([str(i) for i in input_lens]) if input_lens else "N/A"
     output_ctx_str = ", ".join([str(o) for o in output_lens]) if output_lens else "N/A"
 
-    if infra == "vllm":
+    if engine == "vllm":
         serving_metrics = [
             ("**请求吞吐量 (req/s)**", "request throughput (req/s)"),
             ("**输出 token 吞吐量 (tok/s)**", "output token throughput (tok/s)"),
@@ -1150,7 +1150,7 @@ def generate_comparison_markdown(
 
 {make_table(tpot_metrics)}
 """
-        if infra == "sglang":
+        if engine == "sglang":
             tables_section += f"""
 ## 端到端延迟 (E2E)
 
@@ -1267,14 +1267,14 @@ def generate_comparison_markdown(
 
 {make_table(tpot_metrics)}
 """
-        if infra == "sglang":
+        if engine == "sglang":
             tables_section += f"""
 ## 端到端延迟 (E2E)
 
 {make_table(e2e_metrics)}
 """
 
-        if infra == "vllm":
+        if engine == "vllm":
             tables_section += f"""
 ## Token间延迟 (ITL)
 
@@ -1327,7 +1327,7 @@ def generate_comparison_markdown(
 ## Benchmark 执行命令
 
 ```bash
-{generate_benchmark_command(infra, model_name, test_suite)}
+{generate_benchmark_command(engine, model_name, test_suite)}
 ```
 
 <div align="center">
@@ -1341,8 +1341,8 @@ def generate_comparison_markdown(
     print(f"Generated: {md_file}")
 
 
-def get_available_run_ids(infra, chip_name, model_name, test_suite):
-    base_path = f"reports/{infra}/benchmark/{chip_name}/{model_name}/{test_suite}"
+def get_available_run_ids(engine, chip_name, model_name, test_suite):
+    base_path = f"reports/{engine}/benchmark/{chip_name}/{model_name}/{test_suite}"
     if not os.path.exists(base_path):
         return []
 
@@ -1358,11 +1358,11 @@ def get_available_run_ids(infra, chip_name, model_name, test_suite):
 def main():
     parser = argparse.ArgumentParser(description="Generate benchmark reports")
     parser.add_argument(
-        "--infra",
+        "--engine",
         type=str,
         required=True,
         choices=["vllm", "sglang"],
-        help="Infrastructure: vllm or sglang",
+        help="Inference engine: vllm or sglang",
     )
     parser.add_argument(
         "--chip",
@@ -1397,12 +1397,12 @@ def main():
     chip_name = args.chip.lower()
     model_name = args.model
     test_suite = args.test_suite
-    infra = args.infra
+    engine = args.engine
 
     print(f"\n{'=' * 60}")
     print(f"Report Generation Configuration")
     print(f"{'=' * 60}")
-    print(f"Infra: {infra}")
+    print(f"Engine: {engine}")
     print(f"Chip: {chip_name}")
     print(f"Model: {model_name}")
     print(f"Test Suite: {test_suite}")
@@ -1412,12 +1412,12 @@ def main():
         print(f"Compare with Run-ID: {args.compare_with}")
     print(f"{'=' * 60}\n")
 
-    benchmark_path = f"reports/{infra}/benchmark/{chip_name}/{model_name}/{test_suite}"
+    benchmark_path = f"reports/{engine}/benchmark/{chip_name}/{model_name}/{test_suite}"
     if not os.path.exists(benchmark_path):
         print(f"Error: Benchmark path not found: {benchmark_path}")
         return
 
-    run_ids = get_available_run_ids(infra, chip_name, model_name, test_suite)
+    run_ids = get_available_run_ids(engine, chip_name, model_name, test_suite)
     if not run_ids:
         print(f"No run-id data found for test suite: {test_suite}")
         return
@@ -1426,14 +1426,14 @@ def main():
         run_ids,
         key=lambda x: os.path.getmtime(
             os.path.join(
-                f"reports/{infra}/benchmark/{chip_name}/{model_name}/{test_suite}", x
+                f"reports/{engine}/benchmark/{chip_name}/{model_name}/{test_suite}", x
             )
         ),
         reverse=True,
     )
     print(f"Found {len(run_ids)} run-id(s): {', '.join(run_ids_sorted)}")
 
-    base_path = f"reports/{infra}/benchmark/{chip_name}/{model_name}/{test_suite}"
+    base_path = f"reports/{engine}/benchmark/{chip_name}/{model_name}/{test_suite}"
     test_run_id = args.run_id or run_ids_sorted[0]
     concurrencies = get_all_concurrencies(base_path, test_run_id)
 
@@ -1456,10 +1456,10 @@ def main():
             )
             all_run_ids = [baseline_id] + comparison_ids
             compare_str = "_".join(comparison_ids)
-            output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/compare_{baseline_id}_{compare_str}"
+            output_dir = f"analysis/{engine}/{chip_name}/{model_name}/{test_suite}/compare_{baseline_id}_{compare_str}"
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             generate_comparison_report(
-                infra,
+                engine,
                 chip_name,
                 model_name,
                 test_suite,
@@ -1471,11 +1471,11 @@ def main():
             output_dirs.append(output_dir)
         else:
             output_dir = (
-                f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/{args.run_id}"
+                f"analysis/{engine}/{chip_name}/{model_name}/{test_suite}/{args.run_id}"
             )
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             generate_single_report(
-                infra,
+                engine,
                 chip_name,
                 model_name,
                 test_suite,
@@ -1488,10 +1488,10 @@ def main():
     else:
         latest_run_id = run_ids_sorted[0]
         if len(run_ids) == 1:
-            output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/{latest_run_id}"
+            output_dir = f"analysis/{engine}/{chip_name}/{model_name}/{test_suite}/{latest_run_id}"
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             generate_single_report(
-                infra,
+                engine,
                 chip_name,
                 model_name,
                 test_suite,
@@ -1505,10 +1505,10 @@ def main():
                 compare_ids = [c.strip() for c in args.compare_with.split(",")]
                 for compare_id in compare_ids:
                     run_ids_to_compare = [compare_id, latest_run_id]
-                    output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/compare_{compare_id}_{latest_run_id}"
+                    output_dir = f"analysis/{engine}/{chip_name}/{model_name}/{test_suite}/compare_{compare_id}_{latest_run_id}"
                     Path(output_dir).mkdir(parents=True, exist_ok=True)
                     generate_comparison_report(
-                        infra,
+                        engine,
                         chip_name,
                         model_name,
                         test_suite,
@@ -1524,10 +1524,10 @@ def main():
                 )
 
                 run_ids_to_compare = [compare_run_id, latest_run_id]
-                output_dir = f"analysis/{infra}/{chip_name}/{model_name}/{test_suite}/compare_{compare_run_id}_{latest_run_id}"
+                output_dir = f"analysis/{engine}/{chip_name}/{model_name}/{test_suite}/compare_{compare_run_id}_{latest_run_id}"
                 Path(output_dir).mkdir(parents=True, exist_ok=True)
                 generate_comparison_report(
-                    infra,
+                    engine,
                     chip_name,
                     model_name,
                     test_suite,

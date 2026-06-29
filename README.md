@@ -10,7 +10,7 @@ Performance test of model inference
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--infra` | 是 | 推理框架：`vllm` 或 `sglang` |
+| `--engine` | 是 | 推理引擎：`vllm` 或 `sglang` |
 | `--base-url` | 是 | 基准测试服务器地址 |
 | `--chip` | 是 | 芯片名称（如：`nvidia_h100`, `hygon_bw1000`） |
 | `--model` | 是 | served-model-name，模型服务名称 |
@@ -25,7 +25,7 @@ Performance test of model inference
 
 ```bash
 python run_benchmark.py \
-  --infra vllm \
+  --engine vllm \
   --base-url http://localhost:8080 \
   --chip nvidia_h100 \
   --model Llama-2-7b \
@@ -36,7 +36,7 @@ python run_benchmark.py \
 
 ```bash
 python run_benchmark.py \
-  --infra sglang \
+  --engine sglang \
   --base-url http://localhost:8000 \
   --chip nvidia_h100 \
   --model Llama-2-7b \
@@ -47,7 +47,7 @@ python run_benchmark.py \
 
 ```bash
 python run_benchmark.py \
-  --infra vllm \
+  --engine vllm \
   --base-url http://localhost:8080 \
   --chip nvidia_h100 \
   --model Llama-2-7b \
@@ -59,7 +59,7 @@ python run_benchmark.py \
 
 ```bash
 python run_benchmark.py \
-  --infra vllm \
+  --engine vllm \
   --base-url http://localhost:8080 \
   --chip nvidia_h100 \
   --model Llama-2-7b \
@@ -89,7 +89,7 @@ python run_benchmark.py \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--infra` | 是 | 推理框架：`vllm` 或 `sglang` |
+| `--engine` | 是 | 推理引擎：`vllm` 或 `sglang` |
 | `--chip` | 是 | 芯片名称（如：`nvidia_h100`, `hygon_bw1000`） |
 | `--model` | 是 | 模型名称 |
 | `--test-suite` | 否 | 测试套件，默认：`test_01` |
@@ -120,7 +120,7 @@ python run_benchmark.py \
 
 ```bash
 python generate_report.py \
-  --infra vllm \
+  --engine vllm \
   --chip nvidia_h100 \
   --model Llama-2-7b \
   --test-suite test_01
@@ -130,7 +130,7 @@ python generate_report.py \
 
 ```bash
 python generate_report.py \
-  --infra vllm \
+  --engine vllm \
   --chip nvidia_h100 \
   --model Llama-2-7b \
   --test-suite test_01
@@ -140,7 +140,7 @@ python generate_report.py \
 
 ```bash
 python generate_report.py \
-  --infra vllm \
+  --engine vllm \
   --chip nvidia_h100 \
   --model Llama-2-7b \
   --test-suite test_01 \
@@ -153,7 +153,7 @@ python generate_report.py \
 
 ```bash
 python generate_report.py \
-  --infra vllm \
+  --engine vllm \
   --chip kunlun_p800 \
   --model minimax-m2.5 \
   --test-suite test_01 \
@@ -237,5 +237,5 @@ analysis/
 **报告底部 Benchmark 命令：**
 
 - 单次报告和对比报告底部都以代码块形式显示对应的 benchmark 执行命令
-- 根据 `--infra` 参数自动生成 vLLM 或 SGLang 的命令
+- 根据 `--engine` 参数自动生成 vLLM 或 SGLang 的命令
 - 参数占位符使用 `${MODEL_PATH}` 和 `${BASE_URL}`，便于用户替换为实际值

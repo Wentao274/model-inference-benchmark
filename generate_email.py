@@ -114,7 +114,7 @@ def main():
         description="Generate email content from benchmark reports"
     )
     parser.add_argument("--builds-dir", required=True)
-    parser.add_argument("--infra", required=True)
+    parser.add_argument("--engine", required=True)
     parser.add_argument("--chip", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--test-suite", required=True)
@@ -139,7 +139,7 @@ def main():
         analysis_dir = os.path.join(
             builds_dir,
             "analysis",
-            args.infra,
+            args.engine,
             args.chip,
             args.model,
             args.test_suite,
@@ -149,7 +149,7 @@ def main():
         analysis_dir = os.path.join(
             builds_dir,
             "analysis",
-            args.infra,
+            args.engine,
             args.chip,
             args.model,
             args.test_suite,
