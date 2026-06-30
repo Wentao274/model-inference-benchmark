@@ -31,6 +31,36 @@ vllm v0.21.0''', description: '测试环境信息（必填）')
     }
 
     stages {
+        stage('打印测试参数') {
+            steps {
+                sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
+                    script {
+                        println("=== 打印测试参数 ===")
+                        sh """
+ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+echo "=== 测试参数信息 ==="
+echo "测试人员: ${params.TESTER}"
+echo "芯片类型: ${params.CHIP}"
+echo "推理框架: ${params.ENGINE}"
+echo "PD分离模式: ${params.PD}"
+echo "模型服务名称: ${params.MODEL}"
+echo "模型路径: ${params.MODEL_PATH}"
+echo "BASE_URL: ${params.BASE_URL}"
+echo "数据集类型: ${params.DATASET_TYPE}"
+echo "Subset: ${params.SUBSET}"
+echo "测试套件: ${params.TEST_SUITE}"
+echo "测试轮数: ${params.ROUND}"
+echo "随机范围比例: ${params.RANDOM_RANGE_RATIO}"
+echo "服务部署命令: ${params.SERVE}"
+echo "环境信息: ${params.ENV}"
+echo "构建编号: ${BUILD_NUMBER}"
+ENDSSH
+"""
+                    }
+                }
+            }
+        }
+
         stage('API 连通性预检') {
             steps {
                 sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
@@ -88,21 +118,6 @@ cd ${params.WORK_DIR}
 echo "=== 工作目录 ==="
 pwd
 ls -la
-echo "=== 测试参数信息 ==="
-echo "测试人员: ${params.TESTER}"
-echo "推理框架: ${params.ENGINE}"
-echo "数据集类型: ${params.DATASET_TYPE}"
-echo "Subset: ${params.SUBSET}"
-echo "芯片类型: ${params.CHIP}"
-echo "PD分离模式: ${params.PD}"
-echo "模型服务名称: ${params.MODEL}"
-echo "模型路径: ${params.MODEL_PATH}"
-echo "BASE_URL: ${params.BASE_URL}"
-echo "测试套件: ${params.TEST_SUITE}"
-echo "测试轮数: ${params.ROUND}"
-echo "随机范围比例: ${params.RANDOM_RANGE_RATIO}"
-echo "服务部署命令: ${params.SERVE}"
-echo "BUILD_NUMBER: ${BUILD_NUMBER}"
 echo "=== Docker 检查 ==="
 docker --version
 echo "=== 测试目录结构 ==="
