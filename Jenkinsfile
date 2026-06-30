@@ -33,30 +33,30 @@ vllm v0.21.0''', description: '测试环境信息（必填）')
     stages {
         stage('打印测试参数') {
             steps {
-                sshagent(credentials: ["${SSH_CREDENTIALS}"]) {
-                    script {
-                        println("=== 打印测试参数 ===")
-                        sh """
-ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
-echo "=== 测试参数信息 ==="
-echo "测试人员: ${params.TESTER}"
-echo "芯片类型: ${params.CHIP}"
-echo "推理框架: ${params.ENGINE}"
-echo "PD分离模式: ${params.PD}"
-echo "模型服务名称: ${params.MODEL}"
-echo "模型路径: ${params.MODEL_PATH}"
-echo "BASE_URL: ${params.BASE_URL}"
-echo "数据集类型: ${params.DATASET_TYPE}"
-echo "Subset: ${params.SUBSET}"
-echo "测试套件: ${params.TEST_SUITE}"
-echo "测试轮数: ${params.ROUND}"
-echo "随机范围比例: ${params.RANDOM_RANGE_RATIO}"
-echo "服务部署命令: ${params.SERVE}"
-echo "环境信息: ${params.ENV}"
-echo "构建编号: ${BUILD_NUMBER}"
-ENDSSH
-"""
-                    }
+                script {
+                    println("========================================")
+                    println("=== 测试参数信息 ===")
+                    println("========================================")
+                    println("测试人员:          ${params.TESTER}")
+                    println("芯片平台:          ${params.CHIP}")
+                    println("推理框架:          ${params.ENGINE}")
+                    println("PD分离模式:        ${params.PD}")
+                    println("模型服务名称:      ${params.MODEL}")
+                    println("模型路径:          ${params.MODEL_PATH}")
+                    println("BASE_URL:          ${params.BASE_URL}")
+                    println("数据集类型:        ${params.DATASET_TYPE}")
+                    println("Subset:            ${params.SUBSET}")
+                    println("Speed Bench数据集: ${params.SPEED_BENCH_DATASET_PATH}")
+                    println("Speed Bench输出:   ${params.SPEED_BENCH_OUTPUT_LEN}")
+                    println("测试套件:          ${params.TEST_SUITE}")
+                    println("测试轮数:          ${params.ROUND}")
+                    println("随机范围比例:      ${params.RANDOM_RANGE_RATIO}")
+                    println("邮件接收者:        ${params.RECIPIENTS}")
+                    println("服务部署命令:      ${params.SERVE}")
+                    println("环境信息:          ${params.ENV}")
+                    println("工作目录:          ${params.WORK_DIR}")
+                    println("构建编号:          #${BUILD_NUMBER}")
+                    println("========================================")
                 }
             }
         }
