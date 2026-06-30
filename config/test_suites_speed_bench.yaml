@@ -1,6 +1,6 @@
 test-config:
   dataset-name: speed_bench
-  dataset-path: /dingofs/data1/userdata/datasets/speed-bench-without-hle
+  dataset-path: /dingofs/data2/userdata/datasets/speed-bench-without-hle
   dataset-level: [ 1k, 2k, 8k, 16k, 32k ]
   round: 3
   max-concurrency: [ 10, 30, 60 ]

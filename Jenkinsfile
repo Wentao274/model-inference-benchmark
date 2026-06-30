@@ -6,11 +6,11 @@ pipeline {
         choice(name: 'ENGINE', choices: ['vllm', 'sglang'], description: '推理框架（必填）')
         choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式（agg表示非PD分离，disagg表示PD分离）')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型服务名称 (必填)')
-        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径，请使用host绝对路径')
+        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data2/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径，请使用host绝对路径')
         string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址（必填）')
         choice(name: 'DATASET_TYPE', choices: ['random', 'speed_bench'], description: '数据集类型（必填）')
         choice(name: 'SUBSET', choices: ['1k', '2k', '8k', '16k', '32k'], description: 'Speed Bench子集（仅speed_bench时使用）')
-        string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data1/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径（仅speed_bench时使用）')
+        string(name: 'SPEED_BENCH_DATASET_PATH', defaultValue: '/dingofs/data2/userdata/datasets/speed-bench-without-hle', description: 'Speed Bench数据集路径（仅speed_bench时使用）')
         string(name: 'SPEED_BENCH_OUTPUT_LEN', defaultValue: '', description: 'Speed Bench输出长度（仅供speed_bench数据集测试时使用，留空则不指定该参数）')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（仅random数据集使用，可选: test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
@@ -20,7 +20,7 @@ pipeline {
         text(name: 'ENV', defaultValue: '''Kimi-K2.6
 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
 vllm v0.21.0''', description: '测试环境信息（必填）')
-        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
+        string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
     }
     environment {
         SSH_CREDENTIALS = 'HOST_SSH_KEY'

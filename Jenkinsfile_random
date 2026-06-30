@@ -6,7 +6,7 @@ pipeline {
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称')
         choice(name: 'PD', choices: ['agg', 'disagg'], description: 'PD分离模式,agg 表示非 PD 分离, disagg 表示 PD 分离')
         string(name: 'MODEL', defaultValue: 'kimi-k2.5', description: '模型名称（served-model-name）')
-        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data1/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径 (必填，目前仅支持五区的模型路径，请只修改xxx/llms/后的路径名，前面的不要改动)')
+        string(name: 'MODEL_PATH', defaultValue: '/dingofs/data2/userdata/llms/moonshotai/Kimi-K2.6', description: '模型文件本地路径 (必填，目前仅支持五区的模型路径，请只修改xxx/llms/后的路径名，前面的不要改动)')
         string(name: 'BASE_URL', defaultValue: 'http://10.201.149.10:8080', description: 'API 地址，注意没有/v1后缀')
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
@@ -16,7 +16,7 @@ pipeline {
         text(name: 'ENV', defaultValue: '''Kimi-K2.6
 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
 vllm v0.21.0''', description: '测试环境信息')
-        string(name: 'WORK_DIR', defaultValue: '/dingofs/data1/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要修改')
+        string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要修改')
     }
     environment {
         SSH_CREDENTIALS = 'HOST_SSH_KEY'
