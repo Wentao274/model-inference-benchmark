@@ -63,7 +63,7 @@ def parse_env_param(env_value):
 
     Expected JSON shape:
         {"Env": {"model_name": ..., "nodes": ..., "chip": "8 x NVIDIA H100",
-                 "GPU_mem": ..., "GPU_type": ..., "inference_framework": ...}}
+                 "GPU_mem": ..., "GPU_type": ..., "image_tag": ...}}
 
     Returns a list of strings like:
         ["- Kimi-K2.6",
@@ -123,7 +123,7 @@ def parse_env_param(env_value):
         hardware_line = f"{nodes} nodes, {gpu_info} per node ({total_gpus} GPUs total)"
         lines.append(f"- {hardware_line}")
 
-    framework = str(env_data.get("inference_framework", "")).strip()
+    framework = str(env_data.get("image_tag", "")).strip()
     if framework:
         lines.append(f"- {framework}")
 
