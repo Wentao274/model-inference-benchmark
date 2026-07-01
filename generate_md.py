@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import glob
 import yaml
 import argparse
@@ -55,6 +56,78 @@ def build_title_suffix(serve_cmd):
         suffix_parts.append(f"ep{parts['ep']}")
 
     return "".join(suffix_parts)
+
+
+def parse_env_param(env_value):
+    """Parse the ENV parameter JSON string and return markdown bullet lines.
+
+    Expected JSON shape:
+        {"Env": {"model_name": ..., "nodes": ..., "chip": "8 x NVIDIA H100",
+                 "GPU_mem": ..., "GPU_type": ..., "inference_framework": ...}}
+
+    Returns a list of strings like:
+        ["- Kimi-K2.6",
+         "- 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)",
+         "- vllm v0.21.0"]
+    """
+    if not env_value or not env_value.strip():
+        return []
+
+    env_data = None
+    try:
+        parsed = json.loads(env_value)
+        if isinstance(parsed, dict):
+            env_data = parsed.get("Env", parsed)
+    except (json.JSONDecodeError, ValueError):
+        env_data = None
+
+    if not isinstance(env_data, dict):
+        return [
+            f"- {line.strip()}"
+            for line in env_value.strip().split("\n")
+            if line.strip()
+        ]
+
+    lines = []
+
+    model_name = str(env_data.get("model_name", "")).strip()
+    if model_name:
+        lines.append(f"- {model_name}")
+
+    nodes = str(env_data.get("nodes", "")).strip()
+    chip = str(env_data.get("chip", "")).strip()
+    gpu_mem = str(env_data.get("GPU_mem", "")).strip()
+    gpu_type = str(env_data.get("GPU_type", "")).strip()
+
+    if nodes and chip:
+        chip_match = re.match(r"^\s*(\d+)\s*[xX]\s*(.+?)\s*$", chip)
+        if chip_match:
+            count_per_node = int(chip_match.group(1))
+            chip_name = chip_match.group(2).strip()
+        else:
+            count_per_node = 8
+            chip_name = chip
+
+        try:
+            total_gpus = int(nodes) * count_per_node
+        except ValueError:
+            total_gpus = count_per_node
+
+        gpu_info_parts = [f"{count_per_node}x {chip_name}"]
+        if gpu_mem:
+            gpu_info_parts.append(gpu_mem)
+        if gpu_type:
+            gpu_info_parts.append(gpu_type)
+        gpu_info = " ".join(gpu_info_parts)
+
+        hardware_line = f"{nodes} nodes, {gpu_info} per node ({total_gpus} GPUs total)"
+        lines.append(f"- {hardware_line}")
+
+    framework = str(env_data.get("inference_framework", "")).strip()
+    if framework:
+        lines.append(f"- {framework}")
+
+    return lines
 
 
 def parse_benchmark_log(log_file, engine="sglang"):
@@ -440,8 +513,7 @@ def generate_md_report(
 
     md_lines.append("")
     md_lines.append("## Env")
-    for env_line in env.strip().split("\n"):
-        md_lines.append(f"- {env_line}")
+    md_lines.extend(parse_env_param(env))
 
     md_lines.append("")
     md_lines.append("## Dataset")

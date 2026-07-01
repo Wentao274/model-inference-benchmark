@@ -17,9 +17,7 @@ pipeline {
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
         text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
-        text(name: 'ENV', defaultValue: '''Kimi-K2.6
-2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)
-vllm v0.21.0''', description: '测试环境信息（必填）')
+        text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","inference_framework": "vllm v0.21.0"}}', description: '测试环境信息（必填）')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
     }
     environment {
