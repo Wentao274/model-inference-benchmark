@@ -768,12 +768,17 @@ def main():
     if output_file is None:
         curdate = datetime.now().strftime("%Y-%m-%d")
         title_suffix = build_title_suffix(serve_value)
+        build_prefix = f"build{args.build_number}-" if args.build_number else ""
         if dataset_type == "speed_bench":
-            file_name = f"{args.model}-{args.engine}-{args.pd}-{args.subset}.md"
+            file_name = (
+                f"{build_prefix}{args.model}-{args.engine}-{args.pd}-{args.subset}.md"
+            )
         elif title_suffix:
-            file_name = f"{args.model}-{args.engine}-{args.pd}-{title_suffix}.md"
+            file_name = (
+                f"{build_prefix}{args.model}-{args.engine}-{args.pd}-{title_suffix}.md"
+            )
         else:
-            file_name = f"{args.model}-{args.engine}-{args.pd}.md"
+            file_name = f"{build_prefix}{args.model}-{args.engine}-{args.pd}.md"
 
         if dataset_type == "speed_bench":
             dashboard_dir = f"dashboard/{args.tester}/{args.engine}/{args.chip}/{args.model}/speed_bench/{args.subset}/{curdate}"
