@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import urllib.request
 import urllib.error
+import ssl
 
 DEFAULT_BASE_URL = "http://10.220.75.93:18080"
 
@@ -249,8 +250,16 @@ def preview_and_import(
     print(f"测试日期: {test_date}")
     print(f"文件数量: {len(md_files)}")
 
-    os.environ["http_proxy"] = "http://100.64.1.68:1080"
-    os.environ["https_proxy"] = "http://100.64.1.68:1080"
+    is_https = base_url.startswith("https://")
+    ssl_context = None
+    if is_https:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+    proxy_handler = urllib.request.ProxyHandler({})
+    https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+    opener = urllib.request.build_opener(proxy_handler, https_handler)
 
     try:
         body, boundary = _build_multipart_body(fields, files_data)
@@ -262,10 +271,19 @@ def preview_and_import(
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=60) as response:
+        with opener.open(req, timeout=60) as response:
             response_body = response.read().decode("utf-8")
 
-        print(f"响应状态: 200")
+        print(f"响应状态: {response.getcode()}")
+
+        if not response_body.strip():
+            print("错误: 响应体为空")
+            return False
+
+        if response_body.lstrip().startswith("<"):
+            print("错误: 响应不是 JSON (可能是代理或网关页面)")
+            print(f"响应内容前500字符: {response_body[:500]}")
+            return False
 
         preview_result = json.loads(response_body)
 
@@ -314,7 +332,7 @@ def preview_and_import(
             method="POST",
         )
 
-        with urllib.request.urlopen(import_req, timeout=60) as import_response:
+        with opener.open(import_req, timeout=60) as import_response:
             import_result_str = import_response.read().decode("utf-8")
 
         import_result = json.loads(import_result_str)
@@ -331,9 +349,6 @@ def preview_and_import(
     except Exception as e:
         print(f"请求出错: {e}")
         return False
-    finally:
-        os.environ.pop("http_proxy", None)
-        os.environ.pop("https_proxy", None)
 
 
 def main():

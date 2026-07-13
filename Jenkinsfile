@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'slave-3'
+    }
     parameters {
         string(name: 'TESTER', defaultValue: 'liwt', description: '测试人员名称（必填）')
         string(name: 'CHIP', defaultValue: 'nvidia-h100', description: '芯片平台名称（必填）')
@@ -359,13 +361,21 @@ BUILDS_DIR=${params.WORK_DIR}/${buildsDir}
 CURDATE=\$(date +%Y-%m-%d)
 DASHBOARD_DIR="${params.WORK_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/\${CURDATE}"
 
-echo "=== 复制 dashboard 目录到 builds 目录 ==="
+echo "=== 复制当前构建 #${BUILD_NUMBER} 的 dashboard 文件到 builds 目录 ==="
 if [ -d "\${DASHBOARD_DIR}" ]; then
-    mkdir -p "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}"
-    cp -r "\${DASHBOARD_DIR}" "\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/"
-    echo "dashboard 目录复制完成: \${DASHBOARD_DIR} -> \${BUILDS_DIR}/dashboard/"
+    DEST_DIR="\${BUILDS_DIR}/dashboard/${params.TESTER}/${params.ENGINE}/${params.CHIP}/${params.MODEL}/${dashboardSuite}/\${CURDATE}"
+    mkdir -p "\${DEST_DIR}"
+    cp "\${DASHBOARD_DIR}"/build${BUILD_NUMBER}-*.md "\${DEST_DIR}/" 2>/dev/null
+    FILE_COUNT=\$(ls "\${DEST_DIR}"/build${BUILD_NUMBER}-*.md 2>/dev/null | wc -l)
+    if [ "\${FILE_COUNT}" -eq 0 ]; then
+        echo "错误: 未找到 build${BUILD_NUMBER}-*.md 文件"
+        exit 1
+    fi
+    echo "已复制 build${BUILD_NUMBER} 的 markdown 文件数量: \${FILE_COUNT}"
+    echo "dashboard 文件复制完成: \${DASHBOARD_DIR} -> \${DEST_DIR}"
 else
-    echo "警告: dashboard 目录不存在: \${DASHBOARD_DIR}"
+    echo "错误: dashboard 目录不存在: \${DASHBOARD_DIR}"
+    exit 1
 fi
 
 echo "=== 备份完成，查看目录结构 ==="
@@ -589,15 +599,18 @@ find ./${buildsDir} -name '*.md' | wc -l
                         println("测试人员: ${params.TESTER}")
                         println("测试日期: ${curDate}")
                         
-                        def mdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
-                        if (!mdFiles || mdFiles.length == 0) {
-                            println("警告: 未找到 markdown 文件")
+                        def allMdFiles = findFiles(glob: "${buildsDir}/dashboard/**/*.md")
+                        def mdFiles = allMdFiles.findAll { it.name.startsWith("build${BUILD_NUMBER}-") }
+                        println("=== 过滤当前构建 #${BUILD_NUMBER} 的 markdown 文件 ===")
+                        println("总文件数: ${allMdFiles.length}, 当前构建文件数: ${mdFiles.size()}")
+                        if (!mdFiles || mdFiles.size() == 0) {
+                            println("警告: 未找到当前构建 #${BUILD_NUMBER} 的 markdown 文件")
                             return
                         }
                         
                         def mdPaths = mdFiles.collect { it.path }.join(' ')
                         
-                        def importBaseUrl = params.ForFactory == 'Yes' ? 'https://benchmark.server.teleport.zetyun.cn:4443' : ''
+                        def importBaseUrl = params.ForFactory == 'Yes' ? 'http://10.201.134.28:18080' : ''
                         def baseUrlArg = importBaseUrl ? "--base-url '${importBaseUrl}'" : ""
                         
                         println("=== 入库 Dashboard URL: ${importBaseUrl ?: 'DEFAULT_BASE_URL (默认)'} ===")
