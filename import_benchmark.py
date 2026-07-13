@@ -365,6 +365,12 @@ def main():
     parser.add_argument(
         "--dry-run", action="store_true", help="Preview only, do not import"
     )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default=DEFAULT_BASE_URL,
+        help=f"Base URL of the benchmark dashboard service (default: {DEFAULT_BASE_URL})",
+    )
 
     args = parser.parse_args()
 
@@ -383,7 +389,7 @@ def main():
 
     success = preview_and_import(
         md_files=md_files,
-        base_url=DEFAULT_BASE_URL,
+        base_url=args.base_url,
         tester=args.tester,
         test_date=args.test_date,
         cache_backend=args.cache_backend,

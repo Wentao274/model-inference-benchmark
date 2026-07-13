@@ -18,6 +18,8 @@ pipeline {
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
         text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
         text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","image_tag": "vllm v0.21.0"}}', description: '测试环境信息（必填）')
+        choice(name: 'ForFactory', choices: ['No', 'Yes'], description: '是否为生产模型')
+        string(name: 'SERVE_DESC', defaultValue: '', description: '模型服务的描述信息')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
     }
     environment {
@@ -52,6 +54,7 @@ pipeline {
                     println("邮件接收者:        ${params.RECIPIENTS}")
                     println("服务部署命令:      ${params.SERVE}")
                     println("环境信息:          ${params.ENV}")
+                    println("是否为生产模型:    ${params.ForFactory}")
                     println("工作目录:          ${params.WORK_DIR}")
                     println("构建编号:          #${BUILD_NUMBER}")
                     println("========================================")
@@ -522,6 +525,7 @@ find ./${buildsDir} -name '*.md' | wc -l
     <table>
         <tr><th>项目</th><td>值</td></tr>
         <tr><td>构建编号</td><td>#${BUILD_NUMBER}</td></tr>
+        <tr><th>模型服务描述</th><td>${params.SERVE_DESC}</td></tr>
         <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>芯片平台</td><td>${params.CHIP}</td></tr>
         <tr><td>推理框架</td><td>${engine}</td></tr>
@@ -529,6 +533,7 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
         <tr><td>PD分离模式</td><td>${params.PD}</td></tr>
+        <tr><td>是否为生产模型</td><td>${params.ForFactory}</td></tr>
         <tr><td>数据集类型</td><td>${params.DATASET_TYPE}</td></tr>
         ${datasetInfoRow}
         <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
@@ -592,7 +597,12 @@ find ./${buildsDir} -name '*.md' | wc -l
                         
                         def mdPaths = mdFiles.collect { it.path }.join(' ')
                         
-                        sh "python3 import_benchmark.py --tester '${params.TESTER}' --test-date '${curDate}' --md-files ${mdPaths}"
+                        def importBaseUrl = params.ForFactory == 'Yes' ? 'https://benchmark.server.teleport.zetyun.cn:4443' : ''
+                        def baseUrlArg = importBaseUrl ? "--base-url '${importBaseUrl}'" : ""
+                        
+                        println("=== 入库 Dashboard URL: ${importBaseUrl ?: 'DEFAULT_BASE_URL (默认)'} ===")
+                        
+                        sh "python3 import_benchmark.py --tester '${params.TESTER}' --test-date '${curDate}' --md-files ${mdPaths} ${baseUrlArg}"
                         
                         println("=== 解析入库完成 ===")
                     }
