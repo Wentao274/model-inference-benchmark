@@ -17,11 +17,11 @@ pipeline {
         string(name: 'TEST_SUITE', defaultValue: 'test_01', description: '测试套件（仅random数据集使用，可选: test_01, test_02）')
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
-        text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
         text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
         text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","image_tag": "vllm v0.21.0"}}', description: '测试环境信息（必填）')
         choice(name: 'ForFactory', choices: ['No', 'Yes'], description: '是否为生产模型')
-        string(name: 'SERVE_DESC', defaultValue: '', description: '模型服务的描述信息')
+        string(name: 'DESCRIPTION', defaultValue: '', description: '模型服务的描述信息')
+        text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
     }
     environment {
@@ -53,10 +53,10 @@ pipeline {
                     println("测试套件:          ${params.TEST_SUITE}")
                     println("测试轮数:          ${params.ROUND}")
                     println("随机范围比例:      ${params.RANDOM_RANGE_RATIO}")
-                    println("邮件接收者:        ${params.RECIPIENTS}")
                     println("服务部署命令:      ${params.SERVE}")
                     println("环境信息:          ${params.ENV}")
                     println("是否为生产模型:    ${params.ForFactory}")
+                    println("邮件接收者:        ${params.RECIPIENTS}")
                     println("工作目录:          ${params.WORK_DIR}")
                     println("构建编号:          #${BUILD_NUMBER}")
                     println("========================================")
@@ -535,7 +535,7 @@ find ./${buildsDir} -name '*.md' | wc -l
     <table>
         <tr><th>项目</th><td>值</td></tr>
         <tr><td>构建编号</td><td>#${BUILD_NUMBER}</td></tr>
-        <tr><th>模型服务描述</th><td>${params.SERVE_DESC}</td></tr>
+        <tr><td>模型服务描述</td><td>${params.DESCRIPTION}</td></tr>
         <tr><td>测试人员</td><td>${params.TESTER}</td></tr>
         <tr><td>芯片平台</td><td>${params.CHIP}</td></tr>
         <tr><td>推理框架</td><td>${engine}</td></tr>
