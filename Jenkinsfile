@@ -19,7 +19,7 @@ pipeline {
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
         text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
         text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","image_tag": "vllm v0.21.0"}}', description: '测试环境信息（必填）')
-        choice(name: 'ForFactory', choices: ['No', 'Yes'], description: '是否为生产模型')
+        choice(name: 'FOR_FACTORY', choices: ['NO', 'YES'], description: '是否为生产模型')
         string(name: 'DESCRIPTION', defaultValue: '', description: '模型服务的描述信息')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
         string(name: 'WORK_DIR', defaultValue: '/dingofs/data2/userdata/liwt/maas-image/bench-dashboard/model-inference-benchmark', description: '测试仓库目录，请不要改动')
@@ -55,7 +55,7 @@ pipeline {
                     println("随机范围比例:      ${params.RANDOM_RANGE_RATIO}")
                     println("服务部署命令:      ${params.SERVE}")
                     println("环境信息:          ${params.ENV}")
-                    println("是否为生产模型:    ${params.ForFactory}")
+                    println("是否为生产模型:    ${params.FOR_FACTORY}")
                     println("邮件接收者:        ${params.RECIPIENTS}")
                     println("工作目录:          ${params.WORK_DIR}")
                     println("构建编号:          #${BUILD_NUMBER}")
@@ -543,7 +543,7 @@ find ./${buildsDir} -name '*.md' | wc -l
         <tr><td>模型路径</td><td>${params.MODEL_PATH}</td></tr>
         <tr><td>API 地址</td><td>${params.BASE_URL}</td></tr>
         <tr><td>PD分离模式</td><td>${params.PD}</td></tr>
-        <tr><td>是否为生产模型</td><td>${params.ForFactory}</td></tr>
+        <tr><td>是否为生产模型</td><td>${params.FOR_FACTORY}</td></tr>
         <tr><td>数据集类型</td><td>${params.DATASET_TYPE}</td></tr>
         ${datasetInfoRow}
         <tr><td>测试轮数</td><td>${round} 轮 (Run ID: ${runIdList})</td></tr>
@@ -610,7 +610,7 @@ find ./${buildsDir} -name '*.md' | wc -l
                         
                         def mdPaths = mdFiles.collect { it.path }.join(' ')
                         
-                        def importBaseUrl = params.ForFactory == 'Yes' ? 'http://10.201.134.28:18080' : ''
+                        def importBaseUrl = params.FOR_FACTORY == 'YES' ? 'http://10.201.134.28:18080' : ''
                         def baseUrlArg = importBaseUrl ? "--base-url '${importBaseUrl}'" : ""
                         
                         println("=== 入库 Dashboard URL: ${importBaseUrl ?: 'DEFAULT_BASE_URL (默认)'} ===")
