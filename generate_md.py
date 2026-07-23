@@ -68,7 +68,7 @@ def parse_env_param(env_value):
     Returns a list of strings like:
         ["- Kimi-K2.6",
          "- 2 nodes, 8x NVIDIA H100 80GB HBM3 per node (16 GPUs total)",
-         "- vllm v0.21.0"]
+         "- vllm v0.24.0"]
     """
     if not env_value or not env_value.strip():
         return []

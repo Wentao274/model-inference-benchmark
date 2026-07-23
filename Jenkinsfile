@@ -18,7 +18,7 @@ pipeline {
         string(name: 'ROUND', defaultValue: '3', description: '测试轮数（执行几轮相同测试）')
         string(name: 'RANDOM_RANGE_RATIO', defaultValue: '0.0', description: '随机范围比例（random-range-ratio）')
         text(name: 'SERVE', defaultValue: '', description: '模型服务部署命令（必填）')
-        text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","image_tag": "vllm v0.21.0"}}', description: '测试环境信息（必填）')
+        text(name: 'ENV', defaultValue: '{"Env":{"model_name":"Kimi-K2.6","nodes":"2","chip":"8 x NVIDIA H100","GPU_mem":"80GB","GPU_type":"HBM3","image_tag": "vllm v0.24.0"}}', description: '测试环境信息（必填）')
         choice(name: 'FOR_FACTORY', choices: ['NO', 'YES'], description: '是否为生产模型')
         string(name: 'DESCRIPTION', defaultValue: '', description: '模型服务的描述信息')
         text(name: 'RECIPIENTS', defaultValue: 'liwt@zetyun.com', description: '测试报告邮件接收者（逗号分隔）')
@@ -28,8 +28,8 @@ pipeline {
         SSH_CREDENTIALS = 'HOST_SSH_KEY'
         REMOTE_HOST = '10.201.132.50'
         REMOTE_USER = 'root'
-        VLLM_IMAGE = 'vllm/vllm-openai:v0.21.0-cu129'
-        SGLANG_IMAGE = 'lmsysorg/sglang:v0.5.12'
+        VLLM_IMAGE = 'vllm/vllm-openai:v0.24.0-cu129'
+        SGLANG_IMAGE = 'lmsysorg/sglang:v0.5.15'
     }
 
     stages {
