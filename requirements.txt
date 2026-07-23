@@ -1,5 +1,6 @@
 PyYAML>=6.0
 matplotlib>=3.7.0
 pandas>=2.0
-sentencepiece>=0.1.99
+sentencepiece==0.1.99
 tiktoken>=0.7.0
+protobuf>=3.20.0
