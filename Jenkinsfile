@@ -193,8 +193,8 @@ export http_proxy=http://100.64.1.68:1080
 docker exec ${containerName} bash -c "cd /workspace/bench-dashboard/model-inference-benchmark && pip install -r requirements.txt || pip3 install -r requirements.txt"
 echo "=== 确认安装 tokenizer 依赖 ==="
 docker exec ${containerName} bash -c "pip install 'sentencepiece==0.1.99' tiktoken protobuf || pip3 install 'sentencepiece==0.1.99' tiktoken protobuf"
-docker exec ${containerName} bash -c 'python3 -c "import sentencepiece; print(\"sentencepiece:\", sentencepiece.__version__)"' || echo "WARNING: sentencepiece 安装失败"
-docker exec ${containerName} bash -c 'python3 -c "import tiktoken; print(\"tiktoken:\", tiktoken.__version__)"' || echo "WARNING: tiktoken 安装失败"
+docker exec ${containerName} python3 -c "import sentencepiece; print('sentencepiece:', sentencepiece.__version__)" || echo "WARNING: sentencepiece 安装失败"
+docker exec ${containerName} python3 -c "import tiktoken; print('tiktoken:', tiktoken.__version__)" || echo "WARNING: tiktoken 安装失败"
 unset https_proxy
 unset http_proxy
 
